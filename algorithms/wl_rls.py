@@ -1,0 +1,111 @@
+"""
+Weight-Learning-based RLS (WL-RLS) 算法
+论文核心贡献之一，基于 Kolmogorov-Arnold 表示定理。
+
+核心思想：在 WLNF 框架下，最小化加权过去误差平方和。
+
+论文 Eq.(29-37):
+    min_ω Σ_{i=0}^{k} λ^{k-i} (d_i - ω^T Z_i)² + λ^k ς/2 ||ω||²
+    P_k = (λP_{k-1}^{-1} + Z_k Z_k^T)^{-1}   （矩阵求逆引理递推）
+    ω_k = ω_{k-1} + e_k P_k Z_k
+"""
+
+import numpy as np
+from metrics.mse import mse_db_curve, steady_state_mse_db
+
+
+class WLRLS:
+    """
+    Weight-Learning-based Recursive Least Squares
+
+    参数
+    ----
+    filter_order : 滤波器阶数 L（输入维度）
+    M            : 每个输入维度的高斯基函数数量
+    sigma        : 高斯核宽度 σ
+    reg          : 正则化因子 ς（初始化 P_0 = I/ς）
+    forgetting   : 遗忘因子 λ ∈ (0, 1]
+    seed         : 随机种子（固定基函数中心）
+    """
+
+    def __init__(self, filter_order: int, M: int = 20,
+                 sigma: float = 1.0, reg: float = 1e-3,
+                 forgetting: float = 0.999, seed: int = 0):
+        self.L = filter_order
+        self.M = M
+        self.sigma = sigma
+        self.reg = reg
+        self.lam = forgetting
+
+        # 固定高斯基函数中心，shape (L, M)
+        rng = np.random.default_rng(seed)
+        self.centers = rng.standard_normal(size=(filter_order, M))
+
+        dim = filter_order * M
+        self.omega = np.zeros(dim)
+        self.P = np.eye(dim) / reg      # 初始逆相关矩阵
+
+    def reset(self):
+        dim = self.L * self.M
+        self.omega = np.zeros(dim)
+        self.P = np.eye(dim) / self.reg
+
+    def _build_Zk(self, x: np.ndarray) -> np.ndarray:
+        """
+        Z_k = vec(X_k)，shape (L*M,)
+        X_k[t, j] = exp(-(x_t - z_{t,j})² / σ²)
+        """
+        diff = x[:, np.newaxis] - self.centers      # (L, M)
+        Xk = np.exp(-(diff ** 2) / (self.sigma ** 2))
+        return Xk.ravel()
+
+    def predict(self, x: np.ndarray) -> float:
+        Zk = self._build_Zk(x)
+        return float(self.omega @ Zk)
+
+    def update(self, x: np.ndarray, d: float) -> float:
+        """
+        单步 RLS 更新（论文 Eq.36-37）
+        P_k = λ^{-1} P_{k-1} - λ^{-1} P_{k-1} Z_k Z_k^T P_{k-1} / (λ + Z_k^T P_{k-1} Z_k)
+        ω_k = ω_{k-1} + e_k P_k Z_k
+        """
+        Zk = self._build_Zk(x)
+        y = float(self.omega @ Zk)
+        e = d - y
+
+        # 计算增益向量（Sherman-Morrison 公式，论文 Eq.36）
+        Pz = self.P @ Zk                            # shape (L*M,)
+        denom = self.lam + float(Zk @ Pz)
+        # 更新逆相关矩阵
+        self.P = (self.P - np.outer(Pz, Pz) / denom) / self.lam
+        # 增益向量 k_k = P_k Z_k
+        gain = self.P @ Zk
+        # 更新权重向量
+        self.omega = self.omega + e * gain
+        return e
+
+    def run(self, X_train: np.ndarray, d_train: np.ndarray,
+            X_test: np.ndarray, d_test: np.ndarray):
+        """
+        全量运行
+
+        返回
+        ----
+        train_errors : shape (n_train,)  训练误差序列
+        test_errors  : shape (n_test,)   测试误差序列
+        mse_curve    : shape (n_train,)  MSE(dB) 学习曲线
+        ss_mse_db    : float             稳态 MSE(dB)
+        """
+        self.reset()
+        n_train = X_train.shape[0]
+        train_errors = np.zeros(n_train)
+
+        for k in range(n_train):
+            train_errors[k] = self.update(X_train[k], d_train[k])
+
+        test_errors = np.array([d_test[k] - self.predict(X_test[k])
+                                 for k in range(len(d_test))])
+
+        mse_curve = mse_db_curve(train_errors, window=1)
+        ss_mse = steady_state_mse_db(test_errors)
+        return train_errors, test_errors, mse_curve, ss_mse
