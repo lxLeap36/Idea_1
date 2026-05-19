@@ -7,7 +7,7 @@ Kernel LMS (KLMS) 算法
 
 import numpy as np
 from utils.kernels import gaussian_kernel
-from metrics.mse import mse_db_curve, steady_state_mse_db
+from metrics.mse import mse_db_curve
 
 
 class KLMS:
@@ -45,8 +45,48 @@ class KLMS:
         self.alphas.append(self.mu * e)
         return e
 
+    def get_state(self) -> dict:
+        """Return minimal snapshot state for prediction: centers and alphas."""
+        return {
+            'centers': np.array(self.centers) if len(self.centers) > 0 else np.zeros((0,)),
+            'alphas': np.array(self.alphas) if len(self.alphas) > 0 else np.zeros((0,)),
+            'sigma': float(self.sigma),
+            'mu': float(self.mu),
+        }
+
+    def get_init_kwargs(self) -> dict:
+        """Return kwargs suitable to construct a fresh KLMS instance with same hyperparams."""
+        return {'step_size': float(self.mu), 'sigma': float(self.sigma)}
+
+    def set_state(self, state: dict):
+        """Restore centers and alphas from state dict."""
+        centers = state.get('centers', None)
+        alphas = state.get('alphas', None)
+        if centers is None or alphas is None:
+            return
+        # store as lists to be consistent with update() expectations
+        self.centers = [c.copy() for c in np.atleast_2d(centers)]
+        self.alphas = list(np.atleast_1d(alphas).astype(float))
+        # restore hyperparameters if present
+        if 'sigma' in state:
+            try:
+                self.sigma = float(state['sigma'])
+            except Exception:
+                pass
+        if 'mu' in state:
+            try:
+                self.mu = float(state['mu'])
+            except Exception:
+                pass
+
     def run(self, X_train: np.ndarray, d_train: np.ndarray,
-            X_test: np.ndarray, d_test: np.ndarray):
+            X_test: np.ndarray = None, d_test: np.ndarray = None):
+        """
+        Training convenience: perform online updates over X_train.
+        Does NOT evaluate test set (snapshot evaluation is done in scenario layer).
+
+        Returns (train_errors, None, mse_curve, None) for backward compatibility.
+        """
         self.reset()
         n_train = X_train.shape[0]
         train_errors = np.zeros(n_train)
@@ -54,9 +94,5 @@ class KLMS:
         for k in range(n_train):
             train_errors[k] = self.update(X_train[k], d_train[k])
 
-        test_errors = np.array([d_test[k] - self.predict(X_test[k])
-                                 for k in range(len(d_test))])
-
         mse_curve = mse_db_curve(train_errors, window=1)
-        ss_mse = steady_state_mse_db(test_errors)
-        return train_errors, test_errors, mse_curve, ss_mse
+        return train_errors, None, mse_curve, None

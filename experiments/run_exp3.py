@@ -22,7 +22,7 @@ if str(ROOT) not in sys.path:
 
 # ── 导入配置 ──────────────────────────────────────────────────────────────────
 sys.path.insert(0, str(ROOT / 'configs'))
-from configs.exp3_config import DATASET, ALGO_PARAMS, MC_TRIALS, PLOT, RESULT_DIR, ALGO_LIST
+from configs.exp3_config import DATASET, ALGO_PARAMS, MC_TRIALS, PLOT, RESULT_DIR, ALGO_LIST, SNAPSHOT, SNAPSHOT_EVERY, SS_LAST_N
 
 from scenarios.nonlinear_id import run_stationary, run_nonstationary
 from utils.plotting import plot_learning_curves, plot_table
@@ -68,7 +68,7 @@ def save_summary_csv(ss_mse: dict, avg_time: dict, path: Path):
 # 子实验 A：平稳场景（σ²=0.0036 和 σ²=0.01）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_stationary_experiments():
+def run_stationary_experiments(snapshot: bool = None, snapshot_every: int = None, ss_last_n: int = None):
     print("\n" + "=" * 60)
     print("子实验 A：平稳非线性系统辨识")
     print("=" * 60)
@@ -94,6 +94,9 @@ def run_stationary_experiments():
             n_trials    = MC_TRIALS,
             verbose     = True,
             algo_list   = algo_names,
+            snapshot    = snapshot,
+            snapshot_every = snapshot_every,
+            ss_last_n   = ss_last_n,
         )
         print(f"    耗时 {time.time() - t_start:.1f}s")
 
@@ -181,7 +184,7 @@ def run_stationary_experiments():
 # 子实验 B：非平稳场景（系数突变）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_nonstationary_experiment():
+def run_nonstationary_experiment(snapshot: bool = None, snapshot_every: int = None, ss_last_n: int = None):
     print("\n" + "=" * 60)
     print("子实验 B：非平稳非线性系统辨识（系数在 k=2001 突变）")
     print("=" * 60)
@@ -200,6 +203,9 @@ def run_nonstationary_experiment():
         n_trials    = MC_TRIALS,
         verbose     = True,
         algo_list   = algo_names,
+        snapshot    = snapshot,
+        snapshot_every = snapshot_every,
+        ss_last_n   = ss_last_n,
     )
     print(f"  耗时 {time.time() - t_start:.1f}s")
 
@@ -233,11 +239,20 @@ def main():
     print(f"   结果保存路径: {RESULT_PATH.resolve()}")
     print(f"   Monte Carlo 次数: {MC_TRIALS}")
 
+    # parse command-line options for snapshot control
+    import argparse
+    parser = argparse.ArgumentParser(description='Run experiment 3 with snapshot evaluation options')
+    parser.add_argument('--no-snapshot', dest='snapshot', action='store_false', help='Disable snapshot evaluation')
+    parser.add_argument('--snapshot-every', type=int, default=SNAPSHOT_EVERY, help='Interval of iterations to snapshot (default from config)')
+    parser.add_argument('--ss-last-n', type=int, default=SS_LAST_N, help='Number of last iterations to average for steady-state MSE')
+    parser.set_defaults(snapshot=SNAPSHOT)
+    args = parser.parse_args()
+
     # 子实验 A：平稳场景（对应论文图 14、15 和表 III）
-    run_stationary_experiments()
+    run_stationary_experiments(snapshot=args.snapshot, snapshot_every=args.snapshot_every, ss_last_n=args.ss_last_n)
 
     # 子实验 B：非平稳场景（对应论文图 16）
-    # run_nonstationary_experiment()
+    # run_nonstationary_experiment(snapshot=args.snapshot, snapshot_every=args.snapshot_every, ss_last_n=args.ss_last_n)
 
     print("\n✓  实验三全部完成，结果已保存至:", RESULT_PATH.resolve())
 

@@ -13,7 +13,7 @@ Weight-Learning-based LMS (WL-LMS) 算法
 """
 
 import numpy as np
-from metrics.mse import mse_db_curve, steady_state_mse_db
+from metrics.mse import mse_db_curve
 
 
 class WLLMS:
@@ -36,6 +36,7 @@ class WLLMS:
         self.M = M
         self.sigma = sigma
         self.eta = step_size
+        self.seed = seed
 
         # 从标准正态分布采样固定中心，训练过程中不更新
         rng = np.random.default_rng(seed)
@@ -47,6 +48,21 @@ class WLLMS:
 
     def reset(self):
         self.omega = np.zeros(self.L * self.M)
+
+    def get_state(self) -> dict:
+        return {'omega': self.omega.copy(), 'centers': self.centers.copy(), 'sigma': float(self.sigma), 'M': int(self.M), 'seed': int(self.seed), 'eta': float(self.eta)}
+
+    def set_state(self, state: dict):
+        self.omega = state.get('omega', np.zeros(self.L * self.M)).copy()
+        centers = state.get('centers', None)
+        if centers is not None:
+            try:
+                self.centers = np.array(centers).copy()
+            except Exception:
+                pass
+
+    def get_init_kwargs(self) -> dict:
+        return {'filter_order': int(self.L), 'M': int(self.M), 'sigma': float(self.sigma), 'step_size': float(self.eta), 'seed': int(self.seed)}
 
     def _build_Xk(self, x: np.ndarray) -> np.ndarray:
         """
@@ -84,17 +100,8 @@ class WLLMS:
         return e
 
     def run(self, X_train: np.ndarray, d_train: np.ndarray,
-            X_test: np.ndarray, d_test: np.ndarray):
-        """
-        全量运行
-
-        返回
-        ----
-        train_errors : shape (n_train,)  训练误差序列
-        test_errors  : shape (n_test,)   测试误差序列
-        mse_curve    : shape (n_train,)  MSE(dB) 学习曲线
-        ss_mse_db    : float             稳态 MSE(dB)
-        """
+            X_test: np.ndarray = None, d_test: np.ndarray = None):
+        """Training convenience: perform updates over X_train only."""
         self.reset()
         n_train = X_train.shape[0]
         train_errors = np.zeros(n_train)
@@ -102,9 +109,5 @@ class WLLMS:
         for k in range(n_train):
             train_errors[k] = self.update(X_train[k], d_train[k])
 
-        test_errors = np.array([d_test[k] - self.predict(X_test[k])
-                                 for k in range(len(d_test))])
-
         mse_curve = mse_db_curve(train_errors, window=1)
-        ss_mse = steady_state_mse_db(test_errors)
-        return train_errors, test_errors, mse_curve, ss_mse
+        return train_errors, None, mse_curve, None

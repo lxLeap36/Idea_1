@@ -7,7 +7,7 @@ Kernel Recursive Least Squares (KRLS) 算法
 
 import numpy as np
 from utils.kernels import gaussian_kernel
-from metrics.mse import mse_db_curve, steady_state_mse_db
+from metrics.mse import mse_db_curve
 
 
 class KRLS:
@@ -25,6 +25,28 @@ class KRLS:
 
     def reset(self):
         self._reset()
+
+    def get_state(self) -> dict:
+        """Return minimal snapshot: centers and alpha (and P if present)."""
+        return {
+            'centers': np.array(self.centers) if len(self.centers) > 0 else np.zeros((0,)),
+            'alpha': self.alpha.copy() if self.alpha.size > 0 else np.zeros((0,)),
+            'P': self.P.copy() if self.P is not None else None,
+        }
+
+    def set_state(self, state: dict):
+        centers = state.get('centers', None)
+        alpha = state.get('alpha', None)
+        P = state.get('P', None)
+        if centers is None or alpha is None:
+            return
+        self.centers = [c.copy() for c in np.atleast_2d(centers)]
+        self.alpha = np.atleast_1d(alpha).astype(float).copy()
+        self.P = None if P is None else np.array(P, copy=True)
+
+    def get_init_kwargs(self) -> dict:
+        """Return kwargs to reconstruct KRLS with same hyperparameters."""
+        return {'sigma': float(self.sigma), 'reg': float(self.reg), 'forgetting': float(self.lam)}
 
     def _kvec(self, x):
         return np.array([gaussian_kernel(x, c, self.sigma) for c in self.centers])
@@ -74,16 +96,16 @@ class KRLS:
         self.centers.append(x.copy())
         return e
 
-    def run(self, X_train, d_train, X_test, d_test):
+    def run(self, X_train, d_train, X_test=None, d_test=None):
+        """
+        Training convenience: perform online updates. Does not evaluate test set.
+        Returns (train_errors, None, mse_curve, None).
+        """
         self.reset()
         n_train = X_train.shape[0]
         train_errors = np.zeros(n_train)
         for k in range(n_train):
             train_errors[k] = self.update(X_train[k], d_train[k])
-        test_errors = np.array([d_test[k] - self.predict(X_test[k])
-                                 for k in range(len(d_test))])
         train_errors = np.where(np.isfinite(train_errors), train_errors, 0.0)
-        test_errors  = np.where(np.isfinite(test_errors),  test_errors,  0.0)
         mse_curve = mse_db_curve(train_errors, window=1)
-        ss_mse    = steady_state_mse_db(test_errors)
-        return train_errors, test_errors, mse_curve, ss_mse
+        return train_errors, None, mse_curve, None

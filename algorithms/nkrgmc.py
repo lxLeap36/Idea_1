@@ -7,7 +7,7 @@ Nyström Kernel Recursive Generalized Maximum Correntropy (NKRGMC)
 """
 
 import numpy as np
-from metrics.mse import mse_db_curve, steady_state_mse_db
+from metrics.mse import mse_db_curve
 from utils.kernels import gaussian_kernel
 
 
@@ -54,11 +54,41 @@ class NKRGMC:
         self.w = np.zeros(self.d)
         self.P = np.eye(self.d) / self.reg
 
+    def get_state(self) -> dict:
+        return {
+            'anchors': np.array(self.anchors) if self.anchors is not None else None,
+            'w': self.w.copy(),
+            'P': self.P.copy(),
+        }
+
+    def set_state(self, state: dict):
+        anchors = state.get('anchors', None)
+        if anchors is not None:
+            self.anchors = np.atleast_2d(anchors).copy()
+        self.w = state.get('w', np.zeros(self.d)).copy()
+        P = state.get('P', None)
+        self.P = np.array(P, copy=True) if P is not None else np.eye(self.d) / self.reg
+
+    def get_init_kwargs(self) -> dict:
+        return {'filter_order': int(self.L), 'd': int(self.d), 'sigma': float(self.sigma),
+                'reg': float(self.reg), 'forgetting': float(self.lam), 'kernel_bw': float(self.kernel_bw),
+                'alpha_order': float(self.alpha_order), 'seed': int(self.seed)}
+
     def init_anchors(self, X_train: np.ndarray):
         """从训练集随机选取 d 个锚点"""
         rng = np.random.default_rng(self.seed)
-        idx = rng.choice(len(X_train), size=min(self.d, len(X_train)), replace=False)
+        chosen = min(self.d, len(X_train))
+        idx = rng.choice(len(X_train), size=chosen, replace=False)
         self.anchors = X_train[idx]
+
+        # If we selected fewer anchors than configured self.d (e.g., small train set),
+        # adjust internal dimensions (w, P) so that mapping size matches anchors count.
+        actual_d = self.anchors.shape[0]
+        if actual_d != self.d:
+            self.d = actual_d
+            # resize weight vector and P accordingly
+            self.w = np.zeros(self.d)
+            self.P = np.eye(self.d) / self.reg
 
     def predict(self, x: np.ndarray) -> float:
         z = self._nystrom_map(x)
@@ -82,7 +112,10 @@ class NKRGMC:
         return e
 
     def run(self, X_train: np.ndarray, d_train: np.ndarray,
-            X_test: np.ndarray, d_test: np.ndarray):
+            X_test: np.ndarray = None, d_test: np.ndarray = None):
+        """
+        Training convenience. Does not evaluate test set; returns training results.
+        """
         self.reset()
         self.init_anchors(X_train)
 
@@ -92,9 +125,5 @@ class NKRGMC:
         for k in range(n_train):
             train_errors[k] = self.update(X_train[k], d_train[k])
 
-        test_errors = np.array([d_test[k] - self.predict(X_test[k])
-                                 for k in range(len(d_test))])
-
         mse_curve = mse_db_curve(train_errors, window=1)
-        ss_mse = steady_state_mse_db(test_errors)
-        return train_errors, test_errors, mse_curve, ss_mse
+        return train_errors, None, mse_curve, None

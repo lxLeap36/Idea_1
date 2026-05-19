@@ -20,7 +20,7 @@ DATASET = dict(
 )
 
 # ─── Monte Carlo 配置 ──────────────────────────────────────────────────────────
-MC_TRIALS = 50          # Monte Carlo 平均次数
+MC_TRIALS = 1          # Monte Carlo 平均次数
 
 # ─── 各算法超参数（尽量复现论文最优性能） ──────────────────────────────────────
 
@@ -31,7 +31,7 @@ ALGO_PARAMS = dict(
     ),
 
     KLMS = dict(
-        step_size    = 0.5,
+        step_size    = 0.15,
         sigma        = 1.0,
     ),
 
@@ -43,33 +43,33 @@ ALGO_PARAMS = dict(
 
     RFFMC = dict(
         d            = 100,        # 随机傅里叶特征维数
-        step_size    = 0.5,
-        sigma        = 1.0,
+        step_size    = 0.14,
+        sigma        = 2.0,
         kernel_bw    = 1.0,
         seed         = 0,
     ),
 
     NKRGMC = dict(
         d            = 100,        # Nyström 锚点数
-        sigma        = 1.0,
+        sigma        = 2.0,
         reg          = 1e-3,
         forgetting   = 0.999,
         kernel_bw    = 1.0,
-        alpha_order  = 2.0,
+        alpha_order  = 2.5,
         seed         = 0,
     ),
 
-    # 论文实验三平稳场景：WL-LMS M=40，WL-RLS M=20（图14/15注释推断）
+    # 论文实验三平稳场景：WL-LMS M=50，WL-RLS M=20（图14/15注释推断）
     WLLMS = dict(
-        M            = 40,
-        sigma        = 1.0,
-        step_size    = 0.05,
+        M            = 50,
+        sigma        = 0.4,
+        step_size    = 0.006,
         seed         = 0,
     ),
 
     WLRLS = dict(
         M            = 20,
-        sigma        = 1.0,
+        sigma        = 0.5,
         reg          = 1e-3,
         forgetting   = 0.999,
         seed         = 0,
@@ -78,8 +78,16 @@ ALGO_PARAMS = dict(
 
 # ─── 可配置要运行的算法列表（默认包含全部 7 种） 'LMS', 'KLMS', 'KRLS', 'RFFMC', 'NKRGMC', 'WL-LMS', 'WL-RLS'
 ALGO_LIST = [
-    'LMS'
+    'LMS', 'KLMS', 'WL-LMS'
 ]
+
+# ─── 快照评估配置 ─────────────────────────────────────────────────────────────
+# 是否启用快照评估（每步或按间隔在训练过程中保存模型状态用于后续在测试集上评估）
+SNAPSHOT = True
+# 每隔多少步保存一次快照（1 表示每步）
+SNAPSHOT_EVERY = 1
+# 用于稳态 MSE 的尾部长度（与 steady_state_mse_db 原始默认一致）
+SS_LAST_N = 500
 
 # ─── 绘图配置 ──────────────────────────────────────────────────────────────────
 PLOT = dict(

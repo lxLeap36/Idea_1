@@ -7,8 +7,7 @@ Random Fourier Filter under Maximum Correntropy Criterion (RFFMC)
 """
 
 import numpy as np
-from utils.kernels import random_fourier_features
-from metrics.mse import mse_db_curve, steady_state_mse_db
+from metrics.mse import mse_db_curve
 
 
 class RFFMC:
@@ -48,6 +47,42 @@ class RFFMC:
     def reset(self):
         self.w = np.zeros(self.d)
 
+    def get_state(self) -> dict:
+        """Return minimal state (weights w)."""
+        return {
+            'w': self.w.copy(),
+            'omega': self.omega.copy(),
+            'b': self.b.copy(),
+            'd': int(self.d),
+            'sigma': float(self.sigma),
+        }
+
+    def set_state(self, state: dict):
+        w = state.get('w', None)
+        if w is not None:
+            self.w = np.atleast_1d(w).copy()
+        omega = state.get('omega', None)
+        b = state.get('b', None)
+        if omega is not None and b is not None:
+            self.omega = np.array(omega, copy=True)
+            self.b = np.array(b, copy=True)
+        # restore other meta if present
+        if 'd' in state:
+            try:
+                self.d = int(state['d'])
+            except Exception:
+                pass
+        if 'sigma' in state:
+            try:
+                self.sigma = float(state['sigma'])
+            except Exception:
+                pass
+
+    def get_init_kwargs(self) -> dict:
+        """Return kwargs to construct a compatible RFFMC instance."""
+        return {'filter_order': int(self.L), 'd': int(self.d), 'step_size': float(self.eta),
+                'sigma': float(self.sigma), 'kernel_bw': float(self.kernel_bw), 'seed': 0}
+
     def predict(self, x: np.ndarray) -> float:
         return float(self.w @ self._map(x))
 
@@ -61,7 +96,10 @@ class RFFMC:
         return e
 
     def run(self, X_train: np.ndarray, d_train: np.ndarray,
-            X_test: np.ndarray, d_test: np.ndarray):
+            X_test: np.ndarray = None, d_test: np.ndarray = None):
+        """
+        Training convenience. Does not evaluate test set. Returns training-related values.
+        """
         self.reset()
         n_train = X_train.shape[0]
         train_errors = np.zeros(n_train)
@@ -69,9 +107,5 @@ class RFFMC:
         for k in range(n_train):
             train_errors[k] = self.update(X_train[k], d_train[k])
 
-        test_errors = np.array([d_test[k] - self.predict(X_test[k])
-                                 for k in range(len(d_test))])
-
         mse_curve = mse_db_curve(train_errors, window=1)
-        ss_mse = steady_state_mse_db(test_errors)
-        return train_errors, test_errors, mse_curve, ss_mse
+        return train_errors, None, mse_curve, None

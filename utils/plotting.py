@@ -26,12 +26,15 @@ ALGO_STYLES = {
 }
 
 
-def smooth(curve: np.ndarray, window: int = 30) -> np.ndarray:
-    """简单滑动平均平滑（用于可视化）"""
+# 新代码（utils/plotting.py 中的 smooth 函数）
+def smooth(curve, window=30):
     if window <= 1:
         return curve
+    pad = window // 2
+    padded = np.pad(curve, pad_width=pad, mode='edge')  # 用边缘值填充，而非补零
     kernel = np.ones(window) / window
-    return np.convolve(curve, kernel, mode='same')
+    smoothed = np.convolve(padded, kernel, mode='valid')
+    return smoothed[:len(curve)]
 
 
 def plot_learning_curves(
