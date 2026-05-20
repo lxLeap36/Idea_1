@@ -169,10 +169,32 @@ def run_one_trial(algos: dict,
         final_preds = np.array([algo.predict(x) for x in X_test])
         final_test_errors = d_test - final_preds
 
+        # capture the final model state in a portable form so callers can reconstruct the trained model
+        try:
+            if hasattr(algo, 'get_state'):
+                final_snapshot = ('state', algo.get_state())
+            else:
+                final_snapshot = ('copy', copy.copy(algo))
+        except Exception:
+            final_snapshot = snapshots[-1] if len(snapshots) > 0 else None
+
+        # try to capture algo init kwargs if algorithm provides helper
+        init_kwargs = None
+        try:
+            if hasattr(algo, 'get_init_kwargs'):
+                init_kwargs = algo.get_init_kwargs() or None
+        except Exception:
+            init_kwargs = None
+
         results[name] = {
             'mse_curve':   test_mse_curve,
             'test_errors': final_test_errors,
             'time':        elapsed,
+            'final_preds': final_preds,
+            'final_snapshot': final_snapshot,
+            'algo_class': algo.__class__,
+            'algo_init_kwargs': init_kwargs,
+            'algo_filter_length': getattr(algo, 'L', None),
         }
     return results
 
@@ -186,6 +208,7 @@ def run_monte_carlo(
     snapshot: bool = None,
     snapshot_every: int = None,
     ss_last_n: int = None,
+    return_last_trial: bool = False,
 ):
     """
     对同一实验配置重复 n_trials 次，对学习曲线和测试误差取均值。
@@ -199,6 +222,7 @@ def run_monte_carlo(
     all_curves = {}
     all_times = {}
 
+    last_trial_results = None
     for trial in range(n_trials):
         if verbose:
             print(f"  Trial {trial + 1}/{n_trials} ...", end='\r')
@@ -213,6 +237,8 @@ def run_monte_carlo(
                 all_times[name]  = []
             all_curves[name].append(res['mse_curve'])
             all_times[name].append(res['time'])
+        # keep the last trial's detailed results for downstream analysis (spectra etc.)
+        last_trial_results = trial_results
 
     if verbose:
         print()
@@ -238,6 +264,8 @@ def run_monte_carlo(
 
         avg_time[name] = float(np.mean(all_times[name]))
 
+    if return_last_trial:
+        return avg_curves, ss_mse, avg_time, last_trial_results
     return avg_curves, ss_mse, avg_time
 
 

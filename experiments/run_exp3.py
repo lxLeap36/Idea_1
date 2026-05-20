@@ -65,7 +65,7 @@ def save_summary_csv(ss_mse: dict, avg_time: dict, path: Path):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 子实验 A：平稳场景（σ²=0.0036 和 σ²=0.01）
+# 子实验 A-1：平稳场景（σ²=0.0036 和 σ²=0.01）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_stationary_experiments(snapshot: bool = None, snapshot_every: int = None, ss_last_n: int = None):
@@ -181,7 +181,7 @@ def run_stationary_experiments(snapshot: bool = None, snapshot_every: int = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 子实验 B：非平稳场景（系数突变）
+# 子实验 A-2：非平稳场景（系数突变）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_nonstationary_experiment(snapshot: bool = None, snapshot_every: int = None, ss_last_n: int = None):
@@ -248,10 +248,10 @@ def main():
     parser.set_defaults(snapshot=SNAPSHOT)
     args = parser.parse_args()
 
-    # 子实验 A：平稳场景（对应论文图 14、15 和表 III）
+    # 子实验 A-1：平稳场景（对应论文图 14、15 和表 III）
     run_stationary_experiments(snapshot=args.snapshot, snapshot_every=args.snapshot_every, ss_last_n=args.ss_last_n)
 
-    # 子实验 B：非平稳场景（对应论文图 16）
+    # 子实验 A-2：非平稳场景（对应论文图 16）
     # run_nonstationary_experiment(snapshot=args.snapshot, snapshot_every=args.snapshot_every, ss_last_n=args.ss_last_n)
 
     print("\n✓  实验三全部完成，结果已保存至:", RESULT_PATH.resolve())

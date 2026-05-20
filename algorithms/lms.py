@@ -26,11 +26,15 @@ class LMS:
 
     def get_state(self) -> dict:
         """Return minimal state dict for snapshotting (weights)."""
-        return {'w': self.w.copy()}
+        return {'w': self.w.copy(), 'L': int(self.L), 'eta': float(self.eta)}
 
     def set_state(self, state: dict):
         """Restore state from dict produced by get_state()."""
         self.w = state.get('w', np.zeros(self.L)).copy()
+
+    def get_init_kwargs(self) -> dict:
+        """Return kwargs suitable to construct a fresh LMS instance with same hyperparameters."""
+        return {'filter_order': int(self.L), 'step_size': float(self.eta)}
 
     def predict(self, x: np.ndarray) -> float:
         return float(self.w @ x)
