@@ -46,7 +46,24 @@ class WLLMS:
         # 等价权重向量 ω = vec(Υ)，shape (L*M,)
         self.omega = np.zeros(filter_order * M)
 
-    def reset(self):
+    def reset(self, reseed_centers: bool = False, seed: int = None):
+        """
+        Reset adaptive coefficients.
+
+        Parameters
+        ----------
+        reseed_centers : bool
+            If True, regenerate Gaussian centers.
+        seed : int or None
+            If not None, update self.seed before regenerating centers.
+        """
+        if seed is not None:
+            self.seed = int(seed)
+
+        if reseed_centers:
+            rng = np.random.default_rng(self.seed)
+            self.centers = rng.standard_normal(size=(self.L, self.M))
+
         self.omega = np.zeros(self.L * self.M)
 
     def get_state(self) -> dict:

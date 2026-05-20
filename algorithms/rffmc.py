@@ -32,6 +32,7 @@ class RFFMC:
         self.eta = step_size
         self.sigma = sigma
         self.kernel_bw = kernel_bw
+        self.seed = seed
 
         # 预生成固定 RFF 投影矩阵
         rng = np.random.default_rng(seed)
@@ -44,7 +45,25 @@ class RFFMC:
         """将输入 x 映射到 RFF 特征空间"""
         return np.sqrt(2.0 / self.d) * np.cos(x @ self.omega + self.b)
 
-    def reset(self):
+    def reset(self, reseed_features: bool = False, seed: int = None, **kwargs):
+        """
+        Reset adaptive weights.
+
+        Parameters
+        ----------
+        reseed_features : bool
+            If True, regenerate random Fourier features.
+        seed : int or None
+            If not None, update self.seed before regenerating features.
+        """
+        if seed is not None:
+            self.seed = int(seed)
+
+        if reseed_features:
+            rng = np.random.default_rng(self.seed)
+            self.omega = rng.normal(0, 1.0 / self.sigma, size=(self.L, self.d))
+            self.b = rng.uniform(0, 2 * np.pi, size=self.d)
+
         self.w = np.zeros(self.d)
 
     def get_state(self) -> dict:
@@ -81,7 +100,7 @@ class RFFMC:
     def get_init_kwargs(self) -> dict:
         """Return kwargs to construct a compatible RFFMC instance."""
         return {'filter_order': int(self.L), 'd': int(self.d), 'step_size': float(self.eta),
-                'sigma': float(self.sigma), 'kernel_bw': float(self.kernel_bw), 'seed': 0}
+                'sigma': float(self.sigma), 'kernel_bw': float(self.kernel_bw), 'seed': int(self.seed)}
 
     def predict(self, x: np.ndarray) -> float:
         return float(self.w @ self._map(x))

@@ -5,16 +5,16 @@ import os
 
 DATASET = dict(
     n_train = 2000,
-    n_test = 20,
+    n_test = 200,
     p = 5,
     seed = 123,
     noise_var = 0.0036,
     # input choices: 'colored', 'ar1', 'sines', 'speech'
-    input_type = 'colored',
+    input_type = 'ar1',
     # parameters for colored Gaussian (AR(1) on noise): {'rho': 0.9}
     input_params_colored = {'rho': 0.9},
     # parameters for AR(1) signal: {'a': 0.8, 'noise_std': 1.0}
-    input_params_ar1 = {'a': 0.8, 'noise_std': 1.0},
+    input_params_ar1 = {'a': 0.0, 'noise_std': 1.0},
     # parameters for sum-of-sines: {'f1':0.05, 'f2':0.11, 'amp1':1.0, 'amp2':0.5}
     input_params_sines = {'f1': 0.05, 'f2': 0.11, 'amp1': 1.0, 'amp2': 0.5},
     # speech input: provide path to wav file; if None, speech is unavailable
@@ -29,17 +29,17 @@ ALGO_PARAMS = dict(
     KRLS = dict(sigma=1.0, reg=1e-3, forgetting=0.999),
     RFFMC = dict(d=100, step_size=0.5, sigma=1.0, kernel_bw=1.0, seed=0),
     NKRGMC = dict(d=100, sigma=1.0, reg=1e-3, forgetting=0.999, kernel_bw=1.0, alpha_order=2.0, seed=0),
-    WLLMS = dict(M=50, sigma=0.4, step_size=0.0001, seed=0),
+    WLLMS = dict(M=50, sigma=0.4, step_size=0.0006, seed=0),
     WLRLS = dict(M=20, sigma=1.0, reg=1e-3, forgetting=0.999, seed=0),
 )
 
-ALGO_LIST = ['LMS', 'KLMS', 'WL-LMS']
+ALGO_LIST = ['LMS', 'WL-LMS']
 
 # IMD coefficients
 IMD = dict(c2=0.3, c3=0.1)
 
 # Monte Carlo
-MC_TRIALS = 1
+MC_TRIALS = 5
 
 # snapshot defaults (reuse exp3 defaults but override if needed)
 SNAPSHOT = True

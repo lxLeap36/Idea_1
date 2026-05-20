@@ -36,6 +36,7 @@ class WLRLS:
         self.sigma = sigma
         self.reg = reg
         self.lam = forgetting
+        self.seed = seed
 
         # 固定高斯基函数中心，shape (L, M)
         rng = np.random.default_rng(seed)
@@ -45,18 +46,52 @@ class WLRLS:
         self.omega = np.zeros(dim)
         self.P = np.eye(dim) / reg      # 初始逆相关矩阵
 
-    def reset(self):
+    def reset(self, reseed_centers: bool = False, seed: int = None):
+        """
+        Reset WL-RLS state.
+
+        Parameters
+        ----------
+        reseed_centers : bool
+            If True, regenerate Gaussian centers according to self.seed.
+        seed : int or None
+            If not None, update self.seed before regenerating centers.
+        """
+        if seed is not None:
+            self.seed = int(seed)
+
+        if reseed_centers:
+            rng = np.random.default_rng(self.seed)
+            self.centers = rng.standard_normal(size=(self.L, self.M))
+
         dim = self.L * self.M
         self.omega = np.zeros(dim)
         self.P = np.eye(dim) / self.reg
 
     def get_state(self) -> dict:
-        return {'omega': self.omega.copy(), 'P': self.P.copy()}
+        return {
+            'omega': self.omega.copy(),
+            'P': self.P.copy(),
+            'centers': self.centers.copy(),
+            'sigma': float(self.sigma),
+            'M': int(self.M),
+            'seed': int(self.seed),
+            'reg': float(self.reg),
+            'forgetting': float(self.lam),
+        }
 
     def set_state(self, state: dict):
         self.omega = state.get('omega', np.zeros(self.L * self.M)).copy()
+
         P = state.get('P', None)
         self.P = np.array(P, copy=True) if P is not None else np.eye(self.L * self.M) / self.reg
+
+        centers = state.get('centers', None)
+        if centers is not None:
+            self.centers = np.array(centers, copy=True)
+
+        if 'seed' in state:
+            self.seed = int(state['seed'])
 
     def get_init_kwargs(self) -> dict:
         """Return kwargs to construct a WL-RLS instance with the same hyperparameters."""

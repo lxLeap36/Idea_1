@@ -72,12 +72,18 @@ def run_one_trial(algos: dict,
         # 使用 trial_seed 重置算法随机状态（仅对有 seed 属性的算法生效）
         if hasattr(algo, 'seed'):
             try:
-                algo.seed = trial_seed
+                algo.seed = int(trial_seed)
             except Exception:
                 pass
-
-        # reset algorithm and perform any algorithm-specific initialization
-        algo.reset()
+        try:
+            algo.reset(reseed_centers=True, seed=trial_seed)
+        except TypeError:
+            try:
+                # For algorithms with random Fourier features, e.g. RFFMC.
+                algo.reset(reseed_features=True, seed=trial_seed)
+            except TypeError:
+                # For deterministic algorithms, e.g. LMS / KLMS.
+                algo.reset()
         if hasattr(algo, 'init_anchors'):
             try:
                 # NKRGMC needs anchors initialized from training set
@@ -228,8 +234,17 @@ def run_monte_carlo(
             print(f"  Trial {trial + 1}/{n_trials} ...", end='\r')
 
         algos, X_train, d_train, X_test, d_test = build_fn(trial)
-        trial_results = run_one_trial(algos, X_train, d_train, X_test, d_test, trial,
-                                      snapshot=snapshot, snapshot_every=snapshot_every)
+        algo_seed = 10000 + trial
+        trial_results = run_one_trial(
+            algos,
+            X_train,
+            d_train,
+            X_test,
+            d_test,
+            trial_seed=algo_seed,
+            snapshot=snapshot,
+            snapshot_every=snapshot_every
+        )
 
         for name, res in trial_results.items():
             if name not in all_curves:

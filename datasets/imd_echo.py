@@ -103,15 +103,52 @@ def generate_imd_echo(
     return x, y_noisy
 
 
-def build_dataset_from_xy(x: np.ndarray, y: np.ndarray, p: int = 5) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Build supervised dataset: use previous p noisy inputs to predict current clean y."""
+def build_dataset_from_xy(
+    x: np.ndarray,
+    y: np.ndarray,
+    p: int = 5
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Build supervised dataset for IMD echo identification.
+
+    Target equation:
+        y(k) = c2 * x(k) * x(k-1) + c3 * x(k)^2 * x(k-1)
+
+    Therefore, when predicting y(k), the input vector must contain
+    the current sample x(k) and recent history:
+
+        X_row(k) = [x(k), x(k-1), ..., x(k-p+1)]
+
+    This avoids the previous off-by-one problem where the model tried
+    to predict y(k) without seeing x(k).
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    if len(x) != len(y):
+        raise ValueError(f"x and y must have the same length, got {len(x)} and {len(y)}")
+
+    if p < 1:
+        raise ValueError(f"p must be >= 1, got {p}")
+
     N = len(x)
-    rows = N - p
-    X = np.zeros((rows, p))
+    if N < p:
+        raise ValueError(f"signal length N={N} is shorter than p={p}")
+
+    rows = N - p + 1
+    X = np.zeros((rows, p), dtype=float)
+    d = np.zeros(rows, dtype=float)
+
     for i in range(rows):
-        X[i] = x[i:i + p]
-    d = y[p:]
-    # for testing we may want both noisy/clean; here y is already noisy target
+        # Current target index.
+        k = i + p - 1
+
+        # Use [x(k), x(k-1), ..., x(k-p+1)]
+        X[i, :] = x[k - np.arange(p)]
+
+        # Predict y(k)
+        d[i] = y[k]
+
     return X, X.copy(), d, d
 
 def compute_imd_y(x: np.ndarray, c2: float = 0.3, c3: float = 0.1) -> np.ndarray:
