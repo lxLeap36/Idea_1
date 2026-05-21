@@ -16,7 +16,14 @@ sys.path.insert(0, str(ROOT / 'configs'))
 from configs.exp_b_config import DATASET, ALGO_PARAMS, MC_TRIALS, PLOT, RESULT_DIR, ALGO_LIST, IMD, SNAPSHOT, SNAPSHOT_EVERY, SS_LAST_N, PEAK_A, NOISE_MODE, NOISE_VALUE, SPEC_VIS_LEN, SPEC_VIS_SEED
 
 from scenarios.imd_echo_scenario import run_imd_experiment
-from utils.plotting import plot_learning_curves, plot_spectra_comparison, plot_spectra_grid, plot_residuals_grid
+from utils.plotting import (
+    plot_learning_curves,
+    plot_spectra_comparison,
+    plot_spectra_grid,
+    plot_residuals_grid,
+    plot_speech_spectra_grid,
+    plot_speech_residual_spectra_grid,
+)
 from datasets.imd_echo import generate_imd_echo, build_dataset_from_xy, compute_imd_y
 import numpy as np
 
@@ -75,6 +82,70 @@ def main():
 
     plot_learning_curves(results=avg_curves, title='IMD Echo (Testing MSE)', save_path=RESULT_PATH / 'fig_imd.png', smooth_window=PLOT['smooth_window'], y_lim=PLOT['y_lim'])
 
+    # Broadband spectral visualizations for speech input.
+    # Unlike sine input, speech has no fixed f1/f2 or discrete IMD lines,
+    # so we plot broadband spectra and residual spectra.
+    if DATASET.get('input_type') == 'speech' and last_signals is not None and last_trial_results is not None:
+        x_full, y_full = last_signals
+
+        p = int(DATASET.get('p', 5))
+        n_train = int(DATASET.get('n_train'))
+        n_test = int(DATASET.get('n_test'))
+
+        # build_dataset_from_xy() uses rows:
+        # X row k -> [x(k), x(k-1), ...], target d -> y(k)
+        # After training samples, test target starts at original index:
+        # k = p - 1 + n_train
+        start = p - 1 + n_train
+        end = start + n_test
+
+        x_seg = x_full[start:end]
+        y_seg = y_full[start:end]
+
+        # Sampling rate for display only.
+        # If your speech file is 16 kHz, keep this default.
+        fs_speech = float(DATASET.get('fs', 16000.0))
+
+        algo_signals = {}
+
+        for name in list(ALGO_LIST):
+            if name not in last_trial_results:
+                continue
+
+            preds = last_trial_results[name].get('final_preds', None)
+            if preds is None:
+                print(f"[speech spectra] no predictions for {name}, skipping")
+                continue
+
+            y_pred = np.asarray(preds, dtype=float)
+
+            L = min(len(x_seg), len(y_seg), len(y_pred))
+            if L <= 0:
+                print(f"[speech spectra] empty signals for {name}, skipping")
+                continue
+
+            x_plot = np.asarray(x_seg[:L], dtype=float)
+            y_plot = np.asarray(y_seg[:L], dtype=float)
+            y_pred_plot = y_pred[:L]
+            residual_plot = y_plot - y_pred_plot
+
+            algo_signals[name] = (x_plot, y_plot, y_pred_plot, residual_plot)
+
+        if len(algo_signals) > 0:
+            plot_speech_spectra_grid(
+                algo_signals,
+                RESULT_PATH / 'speech_spectra_grid.png',
+                fs=fs_speech,
+                nfft=None,
+            )
+
+            plot_speech_residual_spectra_grid(
+                algo_signals,
+                RESULT_PATH / 'speech_residual_spectra_grid.png',
+                fs=fs_speech,
+                nfft=None,
+            )
+
     # Additional spectral visualizations for 'sines' input: per-algorithm spectra of input x, target y, prediction, and residual
     if DATASET.get('input_type') == 'sines' and last_signals is not None and last_trial_results is not None:
         x_full, y_full = last_signals
@@ -83,7 +154,7 @@ def main():
         n_train = DATASET.get('n_train')
         n_test = DATASET.get('n_test')
         # d_test corresponds to y[p + n_train : p + n_train + n_test]
-        start = p + n_train
+        start = p - 1 + n_train
         end = start + n_test
         x_seg = x_full[start:end]
         y_seg = y_full[start:end]
@@ -217,9 +288,10 @@ def main():
 
         # draw combined grid figure
         if len(algo_signals) > 0:
-            fig_name = RESULT_PATH / 'spectra_grid_hr.png'
-            plot_spectra_grid(algo_signals, fig_name, fs=1.0, f1=f1, f2=f2, nfft=N)
-            plot_residuals_grid(algo_signals, fig_name, fs=1.0, f1=f1, f2=f2, nfft=N)
+            fig_name1 = RESULT_PATH / 'spectra_grid_hr.png'
+            fig_name2 = RESULT_PATH / 'residuals_grid_hr.png'
+            plot_spectra_grid(algo_signals, fig_name1, fs=1.0, f1=f1, f2=f2, nfft=N)
+            plot_residuals_grid(algo_signals, fig_name2, fs=1.0, f1=f1, f2=f2, nfft=N)
 
     print('\nDone. Results saved to', RESULT_PATH)
 

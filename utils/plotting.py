@@ -430,3 +430,197 @@ def plot_residuals_grid(
     fig.savefig(save_path, dpi=150)
     _plt.close(fig)
     print(f"[plot] saved residuals grid figure: {save_path}")
+
+
+def plot_speech_spectra_grid(
+    algo_signals: dict,
+    save_path: Path,
+    fs: float = 16000.0,
+    nfft: int = None,
+    floor_db: float = -120.0,
+    figsize_per_plot: tuple = (5.0, 3.4),
+    show: bool = False,
+):
+    """
+    Plot broadband spectra for speech input.
+
+    Each subplot corresponds to one algorithm and shows:
+        input x, target y, predicted y, residual y - y_pred
+
+    This is different from the sine-input spectrum plot:
+    speech has no fixed f1/f2 or discrete IMD lines, so we do not mark IMD frequencies.
+    """
+    import numpy as _np
+    import matplotlib.pyplot as _plt
+
+    names = list(algo_signals.keys())
+    n_algos = len(names)
+    if n_algos == 0:
+        print("[plot] no algorithms to plot for speech spectra")
+        return
+
+    cols = min(3, n_algos)
+    rows = (n_algos + cols - 1) // cols
+
+    fig_w = figsize_per_plot[0] * cols
+    fig_h = figsize_per_plot[1] * rows
+    fig, axes = _plt.subplots(rows, cols, figsize=(fig_w, fig_h))
+    axes = axes.reshape(-1) if isinstance(axes, _np.ndarray) else [axes]
+
+    for idx, name in enumerate(names):
+        ax = axes[idx]
+
+        x, y, y_pred, residual = algo_signals[name]
+        x = _np.asarray(x, dtype=float)
+        y = _np.asarray(y, dtype=float)
+        y_pred = _np.asarray(y_pred, dtype=float)
+        residual = _np.asarray(residual, dtype=float)
+
+        L = min(len(x), len(y), len(y_pred), len(residual))
+        if L <= 0:
+            ax.axis("off")
+            print(f"[plot] empty speech signals for {name}, skipping")
+            continue
+
+        x = x[:L]
+        y = y[:L]
+        y_pred = y_pred[:L]
+        residual = residual[:L]
+
+        # Remove DC to avoid a huge zero-frequency spike.
+        x = x - _np.mean(x)
+        y = y - _np.mean(y)
+        y_pred = y_pred - _np.mean(y_pred)
+        residual = residual - _np.mean(residual)
+
+        if nfft is None:
+            nfft_use = 1 << (L - 1).bit_length()
+        else:
+            nfft_use = int(nfft)
+
+        # Hann window is important for speech because it is not periodic in the selected segment.
+        win = _np.hanning(L)
+        win_norm = _np.sum(win) + 1e-12
+
+        def spectrum_db(sig):
+            spec = _np.fft.rfft(sig * win, n=nfft_use)
+            mag = _np.abs(spec) / win_norm
+            db = 20.0 * _np.log10(mag + 1e-20)
+            return _np.maximum(db, floor_db)
+
+        Xdb = spectrum_db(x)
+        Ydb = spectrum_db(y)
+        Ypdb = spectrum_db(y_pred)
+        Rdb = spectrum_db(residual)
+
+        freqs = _np.fft.rfftfreq(nfft_use, d=1.0 / fs)
+
+        ax.plot(freqs, Xdb, label="input x", color="gray", linestyle="-", linewidth=0.8, alpha=0.45)
+        ax.plot(freqs, Ydb, label="target y", color="k", linestyle="-", linewidth=1.4)
+        ax.plot(freqs, Ypdb, label="predicted y", color="tab:orange", linestyle="--", linewidth=2.0)
+        ax.plot(freqs, Rdb, label="residual", color="tab:red", linestyle=":", linewidth=0.9, alpha=0.95)
+
+        ax.set_title(name)
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Magnitude (dB)")
+        ax.grid(True, alpha=0.25)
+        ax.legend(loc="upper right", fontsize=8)
+
+        # Speech at 16 kHz normally has useful content below 8 kHz.
+        ax.set_xlim(0, fs / 2)
+
+    for j in range(n_algos, rows * cols):
+        axes[j].axis("off")
+
+    fig.suptitle("Speech input spectra", y=1.02)
+    fig.tight_layout()
+
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    if show:
+        _plt.show()
+
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    _plt.close(fig)
+    print(f"[plot] saved speech spectra grid: {save_path}")
+
+
+def plot_speech_residual_spectra_grid(
+    algo_signals: dict,
+    save_path: Path,
+    fs: float = 16000.0,
+    nfft: int = None,
+    floor_db: float = -120.0,
+    figsize_per_plot: tuple = (5.0, 3.4),
+    show: bool = False,
+):
+    """
+    Plot only residual spectra for speech input.
+
+    This figure is often clearer than plotting x/y/y_pred/residual together.
+    """
+    import numpy as _np
+    import matplotlib.pyplot as _plt
+
+    names = list(algo_signals.keys())
+    n_algos = len(names)
+    if n_algos == 0:
+        print("[plot] no algorithms to plot for speech residual spectra")
+        return
+
+    cols = min(3, n_algos)
+    rows = (n_algos + cols - 1) // cols
+
+    fig_w = figsize_per_plot[0] * cols
+    fig_h = figsize_per_plot[1] * rows
+    fig, axes = _plt.subplots(rows, cols, figsize=(fig_w, fig_h))
+    axes = axes.reshape(-1) if isinstance(axes, _np.ndarray) else [axes]
+
+    for idx, name in enumerate(names):
+        ax = axes[idx]
+
+        _, _, _, residual = algo_signals[name]
+        residual = _np.asarray(residual, dtype=float)
+
+        L = len(residual)
+        if L <= 0:
+            ax.axis("off")
+            print(f"[plot] empty residual for {name}, skipping")
+            continue
+
+        residual = residual - _np.mean(residual)
+
+        if nfft is None:
+            nfft_use = 1 << (L - 1).bit_length()
+        else:
+            nfft_use = int(nfft)
+
+        win = _np.hanning(L)
+        win_norm = _np.sum(win) + 1e-12
+
+        spec = _np.fft.rfft(residual * win, n=nfft_use)
+        mag = _np.abs(spec) / win_norm
+        Rdb = 20.0 * _np.log10(mag + 1e-20)
+        Rdb = _np.maximum(Rdb, floor_db)
+
+        freqs = _np.fft.rfftfreq(nfft_use, d=1.0 / fs)
+
+        ax.plot(freqs, Rdb, color="tab:red", linestyle=":", linewidth=0.9, alpha=0.95)
+        ax.set_title(name)
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("Residual magnitude (dB)")
+        ax.grid(True, alpha=0.25)
+        ax.set_xlim(0, fs / 2)
+
+    for j in range(n_algos, rows * cols):
+        axes[j].axis("off")
+
+    fig.suptitle("Speech residual spectra", y=1.02)
+    fig.tight_layout()
+
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    if show:
+        _plt.show()
+
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    _plt.close(fig)
+    print(f"[plot] saved speech residual spectra grid: {save_path}")

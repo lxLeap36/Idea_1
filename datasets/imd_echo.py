@@ -31,31 +31,80 @@ def gen_sines(n_samples: int, f1: float = 0.05, f2: float = 0.11, amp1: float = 
 
 
 def load_speech(wav_path: str, n_samples: int, seed: int = 0) -> np.ndarray:
-    """Try to load a speech waveform from wav_path and return first n_samples (mono)."""
+    """
+    Load a speech waveform, convert to mono, remove DC, normalize,
+    and select an active segment to avoid long silence.
+    """
     try:
-        # prefer soundfile if available
         import soundfile as sf
         data, sr = sf.read(wav_path, always_2d=False)
-        if data.ndim > 1:
-            data = data[:, 0]
-        if len(data) < n_samples:
-            # tile if too short
-            reps = int(np.ceil(n_samples / len(data)))
-            data = np.tile(data, reps)
-        return np.asarray(data[:n_samples], dtype=float)
     except Exception:
         try:
             from scipy.io import wavfile
             sr, data = wavfile.read(wav_path)
             data = data.astype(float)
-            if data.ndim > 1:
-                data = data[:, 0]
-            if len(data) < n_samples:
-                reps = int(np.ceil(n_samples / len(data)))
-                data = np.tile(data, reps)
-            return data[:n_samples]
+
+            # Convert integer PCM to roughly [-1, 1]
+            if np.max(np.abs(data)) > 1.5:
+                data = data / np.max(np.abs(data))
         except Exception:
-            raise RuntimeError(f"Failed to load speech file: {wav_path} — please install soundfile or scipy, or provide a longer file.")
+            raise RuntimeError(
+                f"Failed to load speech file: {wav_path}. "
+                "Please install soundfile or scipy, or provide a valid wav file."
+            )
+
+    if data.ndim > 1:
+        data = data[:, 0]
+
+    data = np.asarray(data, dtype=float)
+
+    # Remove NaN / Inf
+    data = np.nan_to_num(data)
+
+    # Remove DC
+    data = data - np.mean(data)
+
+    # Normalize global peak
+    peak = np.max(np.abs(data)) if data.size > 0 else 0.0
+    if peak > 0:
+        data = data / peak
+
+    # If too short, tile it
+    if len(data) < n_samples:
+        reps = int(np.ceil(n_samples / len(data)))
+        data = np.tile(data, reps)
+
+    # Choose an active segment by sliding RMS
+    frame_len = min(1024, max(64, n_samples // 8))
+    hop = frame_len // 2
+
+    if len(data) > n_samples + frame_len:
+        best_start = 0
+        best_rms = -1.0
+
+        for start in range(0, len(data) - n_samples, hop):
+            seg = data[start:start + n_samples]
+            rms = np.sqrt(np.mean(seg ** 2))
+            if rms > best_rms:
+                best_rms = rms
+                best_start = start
+
+        data = data[best_start:best_start + n_samples]
+    else:
+        data = data[:n_samples]
+
+    # Final DC removal and RMS normalization
+    data = data - np.mean(data)
+    rms = np.sqrt(np.mean(data ** 2))
+    if rms > 1e-12:
+        data = data / rms
+
+    # Avoid too large peaks after RMS normalization
+    peak = np.max(np.abs(data))
+    if peak > 0:
+        data = data / peak
+
+    return data
 
 
 def generate_imd_echo(
