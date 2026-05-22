@@ -5,3 +5,4 @@ from .rffmc import RFFMC
 from .nkrgmc import NKRGMC
 from .wl_lms import WLLMS
 from .wl_rls import WLRLS
+from .gh_wl_lms import GHWLLMS

@@ -52,7 +52,7 @@ def save_curves_csv(curves: dict, path: Path):
         writer.writerow(['iteration'] + names)
 
         for i in range(n):
-            row = [i + 1]
+            row = [str(i + 1)]
             for name in names:
                 if i < len(curves[name]):
                     row.append(f'{curves[name][i]:.6f}')
@@ -149,21 +149,80 @@ def plot_learning_curves_with_burst(
     smooth_window: int = 10,
     y_lim: tuple = None,
     burst_cfg: dict = None,
+    algo_params: dict = None,
+    param_keys: dict = None,
 ):
+    """Plot learning curves and optionally annotate legend with main algo params.
+
+    Parameters:
+    - algo_params: dict from config mapping algo_key -> param dict (e.g. ALGO_PARAMS)
+    - param_keys: optional dict mapping algo_key -> list of param names to display
+    """
     fig, ax = plt.subplots(figsize=(7, 4.5))
 
+    # helper: normalize name to match keys like 'WLLMS' or 'GHWLLMS'
+    import re
+    def _norm_key(s):
+        return re.sub(r'[^0-9A-Za-z]', '', s)
+
+    # sensible defaults for which params to show per algorithm key (normalized)
+    default_param_keys = {
+        'LMS': ['step_size'],
+        'KLMS': ['step_size', 'sigma'],
+        'WLLMS': ['M', 'sigma', 'step_size'],
+        'GHWLLMS': ['M', 'scale', 'step_size'],
+    }
+
     for name, curve in results.items():
-        style = ALGO_STYLES.get(
-            name,
-            {'color': 'black', 'linestyle': '-', 'label': name}
-        )
+        style = ALGO_STYLES.get(name, {'color': 'black', 'linestyle': '-', 'label': name})
         smoothed = smooth(np.asarray(curve), smooth_window)
-        ax.plot(
-            smoothed,
-            color=style['color'],
-            linestyle=style['linestyle'],
-            label=style['label'],
-        )
+
+        # build legend label possibly augmented with key params
+        legend_label = style.get('label', name)
+        if algo_params:
+            cfg_key = None
+            # try direct match first
+            if name in algo_params:
+                cfg_key = name
+            else:
+                nk = _norm_key(name)
+                # try matching normalized keys
+                for k in algo_params.keys():
+                    if _norm_key(k).lower() == nk.lower():
+                        cfg_key = k
+                        break
+
+            if cfg_key is not None:
+                params = algo_params.get(cfg_key, {}) or {}
+                # choose keys to show: priority param_keys -> default_param_keys
+                keys_to_show = None
+                if param_keys and cfg_key in param_keys:
+                    keys_to_show = param_keys[cfg_key]
+                else:
+                    keys_to_show = default_param_keys.get(_norm_key(cfg_key), None)
+
+                # fallback: first two params
+                if not keys_to_show:
+                    try:
+                        ks = list(params.keys())
+                        keys_to_show = ks[:2]
+                    except Exception:
+                        keys_to_show = []
+
+                if keys_to_show:
+                    parts = []
+                    for kk in keys_to_show:
+                        if kk in params:
+                            v = params[kk]
+                            if isinstance(v, float):
+                                vs = f"{v:.4g}"
+                            else:
+                                vs = str(v)
+                            parts.append(f"{kk}={vs}")
+                    if parts:
+                        legend_label = f"{legend_label} ({', '.join(parts)})"
+
+        ax.plot(smoothed, color=style['color'], linestyle=style['linestyle'], label=legend_label)
 
     if burst_cfg is not None and bool(burst_cfg.get('enabled', False)):
         domain = burst_cfg.get('domain', 'train_iter')
@@ -279,6 +338,7 @@ def main():
         smooth_window=PLOT.get('smooth_window', 10),
         y_lim=PLOT.get('y_lim', None),
         burst_cfg=DATASET.get('amplitude_burst', None),
+        algo_params=ALGO_PARAMS,
     )
 
     print('\n[Summary]')

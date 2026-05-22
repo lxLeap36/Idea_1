@@ -31,6 +31,7 @@ ALGO_PARAMS = dict(
     RFFMC = dict(d=100, step_size=0.5, sigma=1.0, kernel_bw=1.0, seed=0),
     NKRGMC = dict(d=100, sigma=1.0, reg=1e-3, forgetting=0.999, kernel_bw=1.0, alpha_order=2.0, seed=0),
     WLLMS = dict(M=50, sigma=0.4, step_size=0.006, seed=0),
+    GHWLLMS=dict(M=8, scale=1.0, step_size=0.05, normalized=True, eps=1e-8, seed=0),
     WLRLS = dict(M=20, sigma=1.0, reg=1e-3, forgetting=0.999, seed=0),
 )
 

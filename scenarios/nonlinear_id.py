@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from datasets.nonlinear_system import get_stationary_dataset, get_nonstationary_dataset
-from algorithms import LMS, KLMS, KRLS, RFFMC, NKRGMC, WLLMS, WLRLS
+from algorithms import LMS, KLMS, KRLS, RFFMC, NKRGMC, WLLMS, WLRLS, GHWLLMS
 from configs.exp3_config import SNAPSHOT, SNAPSHOT_EVERY, SS_LAST_N
 
 
@@ -34,12 +34,13 @@ def build_algorithms(filter_order: int, params: dict, algo_list: list = None) ->
     """
     p = filter_order
     all_algos = {
-        'LMS':    LMS(p, **params['LMS']),
-        'KLMS':   KLMS(**params['KLMS']),
-        'KRLS':   KRLS(**params['KRLS']),
-        'RFFMC':  RFFMC(p, **params['RFFMC']),
+        'LMS': LMS(p, **params['LMS']),
+        'KLMS': KLMS(**params['KLMS']),
+        'KRLS': KRLS(**params['KRLS']),
+        'RFFMC': RFFMC(p, **params['RFFMC']),
         'NKRGMC': NKRGMC(p, **params['NKRGMC']),
         'WL-LMS': WLLMS(p, **params['WLLMS']),
+        'GH-WL-LMS': GHWLLMS(p, **params['GHWLLMS']),
         'WL-RLS': WLRLS(p, **params['WLRLS']),
     }
 
