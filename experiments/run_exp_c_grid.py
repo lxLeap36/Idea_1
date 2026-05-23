@@ -168,6 +168,8 @@ def make_pivot_rows(long_rows, target_algorithm="GH-WL-LMS"):
     key_fields = [
         "Case",
         "GH_M",
+        "WL_M",
+        "Match_WL_M",
         "GH_scale",
         "GH_step_size",
         "GH_normalized",
@@ -287,6 +289,16 @@ def main():
     )
 
     parser.add_argument(
+        "--match-wl-m",
+        type=int,
+        default=1,
+        help=(
+            "If 1, set WL-LMS M equal to GH-WL-LMS M in every grid job. "
+            "This enables matched-M fair comparison."
+        ),
+    )
+
+    parser.add_argument(
         "--out-dir",
         type=str,
         default=None,
@@ -350,8 +362,23 @@ def main():
 
                 algo_params = copy.deepcopy(ALGO_PARAMS)
 
-                # Keep current LMS and WL-LMS settings from config.
-                # Only overwrite GH-WL-LMS settings.
+                # ------------------------------------------------------------
+                # Matched-M option:
+                # If enabled, WL-LMS uses the same M as GH-WL-LMS.
+                # This makes the comparison fair in terms of feature dimension:
+                #
+                #     dim(Z_k) = L * M
+                #
+                # Without this, GH-WL-LMS may use a larger M than WL-LMS,
+                # and the performance gain may partly come from having more parameters.
+                # ------------------------------------------------------------
+                if int(args.match_wl_m) == 1:
+                    if "WLLMS" not in algo_params:
+                        raise KeyError("ALGO_PARAMS does not contain 'WLLMS'. Cannot match WL-LMS M.")
+
+                    algo_params["WLLMS"]["M"] = int(M)
+
+                # Overwrite GH-WL-LMS settings for this grid job.
                 algo_params["GHWLLMS"] = dict(
                     M=int(M),
                     scale=float(scale),
@@ -404,6 +431,8 @@ def main():
                         row = dict(
                             Case=args.case,
                             GH_M=int(M),
+                            WL_M=int(algo_params["WLLMS"].get("M", -1)),
+                            Match_WL_M=bool(args.match_wl_m),
                             GH_scale=float(scale),
                             GH_step_size=float(step_size),
                             GH_normalized=bool(args.gh_normalized),
@@ -439,6 +468,8 @@ def main():
                     row = dict(
                         Case=args.case,
                         GH_M=int(M),
+                        WL_M=int(algo_params.get("WLLMS", {}).get("M", -1)),
+                        Match_WL_M=bool(args.match_wl_m),
                         GH_scale=float(scale),
                         GH_step_size=float(step_size),
                         GH_normalized=bool(args.gh_normalized),
