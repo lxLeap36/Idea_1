@@ -63,7 +63,8 @@ def run_one_trial(algos: dict,
                   X_train, d_train, X_test, d_test,
                   trial_seed: int = 0,
                   snapshot: bool = None,
-                  snapshot_every: int = None):
+                  snapshot_every: int = None,
+                  curve_mode: str = "test_snapshot"):
     """
     对所有算法各跑一次，返回
     {name: {'mse_curve': np.ndarray, 'test_errors': np.ndarray, 'time': float}}
@@ -95,11 +96,29 @@ def run_one_trial(algos: dict,
         n_train = X_train.shape[0]
         train_errors = np.zeros(n_train)
 
-        # Decide whether to snapshot and how often per config (allow overrides)
+        # Decide curve mode.
+        #
+        # curve_mode = "test_snapshot":
+        #     original behavior; build testing MSE curve by snapshot evaluation.
+        #
+        # curve_mode = "train_online":
+        #     fast behavior; use online training error e(k)^2 as the curve.
+        #     This avoids expensive repeated test-set evaluation.
+        if curve_mode not in ["test_snapshot", "train_online"]:
+            raise ValueError(
+                f"Unknown curve_mode={curve_mode}. "
+                "Use 'test_snapshot' or 'train_online'."
+            )
+
         if snapshot is None:
             snapshot = SNAPSHOT
         if snapshot_every is None:
             snapshot_every = SNAPSHOT_EVERY
+
+        # In train_online mode, snapshot is not needed.
+        if curve_mode == "train_online":
+            snapshot = False
+
         snapshots = []
         t0 = time.perf_counter()
         for k in range(n_train):
@@ -121,60 +140,91 @@ def run_one_trial(algos: dict,
 
         elapsed = time.perf_counter() - t0
 
-        # Build test_mse_curve aligned to training iterations. If snapshot_every >1,
-        # we fill non-snapshot iterations by repeating the most recent snapshot's result.
-        test_mse_curve = np.zeros(n_train)
-        last_val = None
-        snap_idx = 0
-        for k in range(n_train):
-            if snapshot and ((k % snapshot_every) == 0) and snap_idx < len(snapshots):
-                tag, payload = snapshots[snap_idx]
-                snap_idx += 1
-                if tag == 'state' and payload is not None:
-                    # restore a fresh algorithm instance of same class with state
-                    tmp = None
-                    try:
-                        # Prefer constructing with algorithm-provided init kwargs
-                        if hasattr(algo, 'get_init_kwargs'):
-                            kwargs = algo.get_init_kwargs() or {}
-                            tmp = algo.__class__(**kwargs)
-                        else:
-                            # try basic constructor with filter length if available
-                            try:
-                                tmp = algo.__class__(*([algo.L] if hasattr(algo, 'L') else []))
-                            except Exception:
-                                tmp = copy.copy(algo)
-                    except Exception:
-                        tmp = copy.copy(algo)
-                    try:
-                        if hasattr(tmp, 'set_state'):
-                            tmp.set_state(payload)
-                        else:
-                            # fallback: attempt to assign attributes
-                            for k, v in payload.items():
-                                try:
-                                    setattr(tmp, k, v)
-                                except Exception:
-                                    pass
-                    except Exception:
-                        pass
-                elif tag == 'copy' and payload is not None:
-                    tmp = payload
-                else:
-                    tmp = None
-
-                if tmp is not None:
-                    preds = np.array([tmp.predict(x) for x in X_test])
-                    test_errs = d_test - preds
-                    mse_lin = float(np.mean(test_errs ** 2))
-                    mse_lin = max(mse_lin, 1e-20)
-                    last_val = 10.0 * np.log10(mse_lin)
-                # else last_val remains as previous
-            test_mse_curve[k] = last_val if last_val is not None else 10.0 * np.log10(1e-20)
-
-        # compute final_test_errors using final model state (algo has been trained)
+        # ------------------------------------------------------------
+        # Final test evaluation: only once after training.
+        # ------------------------------------------------------------
         final_preds = np.array([algo.predict(x) for x in X_test])
         final_test_errors = d_test - final_preds
+
+        final_test_mse_lin = float(np.mean(final_test_errors ** 2))
+        final_test_mse_lin = max(final_test_mse_lin, 1e-20)
+        final_test_mse_db = 10.0 * np.log10(final_test_mse_lin)
+
+        # ------------------------------------------------------------
+        # Curve construction
+        # ------------------------------------------------------------
+        if curve_mode == "train_online":
+            # Fast mode:
+            # The curve is the online training error curve.
+            #
+            # train_errors[k] is e(k), returned by algo.update().
+            # Therefore e(k)^2 is the instantaneous online training MSE.
+            train_mse_lin = np.maximum(train_errors ** 2, 1e-20)
+            test_mse_curve = 10.0 * np.log10(train_mse_lin)
+
+        elif curve_mode == "test_snapshot":
+            # Original mode:
+            # Build test_mse_curve aligned to training iterations.
+            # If snapshot_every > 1, fill non-snapshot iterations by repeating
+            # the most recent snapshot's result.
+            test_mse_curve = np.zeros(n_train)
+            last_val = None
+            snap_idx = 0
+
+            for k in range(n_train):
+                if snapshot and ((k % snapshot_every) == 0) and snap_idx < len(snapshots):
+                    tag, payload = snapshots[snap_idx]
+                    snap_idx += 1
+
+                    if tag == 'state' and payload is not None:
+                        # restore a fresh algorithm instance of same class with state
+                        tmp = None
+                        try:
+                            # Prefer constructing with algorithm-provided init kwargs
+                            if hasattr(algo, 'get_init_kwargs'):
+                                kwargs = algo.get_init_kwargs() or {}
+                                tmp = algo.__class__(**kwargs)
+                            else:
+                                # try basic constructor with filter length if available
+                                try:
+                                    tmp = algo.__class__(*([algo.L] if hasattr(algo, 'L') else []))
+                                except Exception:
+                                    tmp = copy.copy(algo)
+                        except Exception:
+                            tmp = copy.copy(algo)
+
+                        try:
+                            if hasattr(tmp, 'set_state'):
+                                tmp.set_state(payload)
+                            else:
+                                # fallback: attempt to assign attributes
+                                for kk, vv in payload.items():
+                                    try:
+                                        setattr(tmp, kk, vv)
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+
+                    elif tag == 'copy' and payload is not None:
+                        tmp = payload
+                    else:
+                        tmp = None
+
+                    if tmp is not None:
+                        preds = np.array([tmp.predict(x) for x in X_test])
+                        test_errs = d_test - preds
+                        mse_lin = float(np.mean(test_errs ** 2))
+                        mse_lin = max(mse_lin, 1e-20)
+                        last_val = 10.0 * np.log10(mse_lin)
+
+                test_mse_curve[k] = last_val if last_val is not None else final_test_mse_db
+
+        else:
+            raise ValueError(
+                f"Unknown curve_mode={curve_mode}. "
+                "Use 'test_snapshot' or 'train_online'."
+            )
 
         # capture the final model state in a portable form so callers can reconstruct the trained model
         try:
@@ -194,10 +244,15 @@ def run_one_trial(algos: dict,
             init_kwargs = None
 
         results[name] = {
-            'mse_curve':   test_mse_curve,
+            'mse_curve': test_mse_curve,
             'test_errors': final_test_errors,
-            'time':        elapsed,
+            'time': elapsed,
             'final_preds': final_preds,
+
+            # New fields
+            'curve_mode': curve_mode,
+            'final_test_mse_db': final_test_mse_db,
+
             'final_snapshot': final_snapshot,
             'algo_class': algo.__class__,
             'algo_init_kwargs': init_kwargs,
@@ -216,6 +271,7 @@ def run_monte_carlo(
     snapshot_every: int = None,
     ss_last_n: int = None,
     return_last_trial: bool = False,
+    curve_mode: str = "test_snapshot",
 ):
     """
     对同一实验配置重复 n_trials 次，对学习曲线和测试误差取均值。
@@ -228,6 +284,7 @@ def run_monte_carlo(
     """
     all_curves = {}
     all_times = {}
+    all_final_test_mse_lin = {}
 
     last_trial_results = None
     for trial in range(n_trials):
@@ -244,15 +301,24 @@ def run_monte_carlo(
             d_test,
             trial_seed=algo_seed,
             snapshot=snapshot,
-            snapshot_every=snapshot_every
+            snapshot_every=snapshot_every,
+            curve_mode=curve_mode,
         )
 
         for name, res in trial_results.items():
             if name not in all_curves:
                 all_curves[name] = []
-                all_times[name]  = []
+                all_times[name] = []
+                all_final_test_mse_lin[name] = []
+
             all_curves[name].append(res['mse_curve'])
             all_times[name].append(res['time'])
+
+            final_db = res.get('final_test_mse_db', np.nan)
+            if np.isfinite(final_db):
+                all_final_test_mse_lin[name].append(10.0 ** (final_db / 10.0))
+            else:
+                all_final_test_mse_lin[name].append(np.nan)
         # keep the last trial's detailed results for downstream analysis (spectra etc.)
         last_trial_results = trial_results
 
@@ -279,6 +345,19 @@ def run_monte_carlo(
         ss_mse[name] = 10 * np.log10(max(ss_lin, 1e-20))
 
         avg_time[name] = float(np.mean(all_times[name]))
+
+    # Add Monte-Carlo averaged final test MSE into last_trial_results
+    # without changing the return signature.
+    if last_trial_results is not None:
+        for name in last_trial_results:
+            vals = np.asarray(all_final_test_mse_lin.get(name, []), dtype=float)
+            vals = vals[np.isfinite(vals)]
+            if vals.size > 0:
+                final_mc_db = 10.0 * np.log10(max(float(np.mean(vals)), 1e-20))
+            else:
+                final_mc_db = np.nan
+
+            last_trial_results[name]['final_test_mse_mc_db'] = final_mc_db
 
     if return_last_trial:
         return avg_curves, ss_mse, avg_time, last_trial_results

@@ -139,7 +139,7 @@ IMD = dict(c2=0.3, c3=0.1)
 MC_TRIALS = 5
 
 
-SNAPSHOT = True
+SNAPSHOT = False
 SNAPSHOT_EVERY = 1
 SS_LAST_N = 1000
 

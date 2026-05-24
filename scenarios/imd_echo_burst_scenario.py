@@ -236,6 +236,7 @@ def run_imd_burst_experiment(
     ss_last_n=1000,
     verbose=True,
     algo_list=None,
+    curve_mode="test_snapshot",
 ):
     build_fn = build_imd_burst_fn(
         dataset_cfg=dataset_cfg,
@@ -252,6 +253,7 @@ def run_imd_burst_experiment(
         snapshot_every=snapshot_every,
         ss_last_n=ss_last_n,
         return_last_trial=True,
+        curve_mode=curve_mode,
     )
 
     last_signals = LAST_TRIAL_SIGNALS[-1] if len(LAST_TRIAL_SIGNALS) > 0 else (None, None)
