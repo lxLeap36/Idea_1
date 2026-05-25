@@ -6,3 +6,4 @@ from .nkrgmc import NKRGMC
 from .wl_lms import WLLMS
 from .wl_rls import WLRLS
 from .gh_wl_lms import GHWLLMS
+from .gh2d_wl_lms import GH2DWLLMS

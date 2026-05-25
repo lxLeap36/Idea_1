@@ -52,9 +52,9 @@ from scenarios.imd_echo_burst_scenario import run_imd_burst_experiment
 # Main purpose: test whether C2-selected candidates generalize to C1 and C3.
 # You can also include C2 here for reference, but it will cost more time.
 CASE_LIST = [
-    "C1_AR1_BURST",
-    "C3_SPEECH_BURST",
-    # "C2_SINES_BURST",
+    # "C1_AR1_BURST",
+    # "C3_SPEECH_BURST",
+    "C2_SINES_BURST",
 ]
 
 MC_TRIALS_DEFAULT = 5
@@ -126,6 +126,85 @@ GH_CANDIDATES = [
         Candidate_Name="GH_5_light_robust",
         Description="GH-WL-LMS lighter robust candidate, lower cost than M=40",
         params=dict(M=20, scale=0.6, step_size=0.005, normalized=True, eps=1e-8, seed=SEED),
+    ),
+]
+
+GH2D_CANDIDATES = [
+    dict(
+        Candidate_Name="GH2D_1_minimal_matched",
+        Description="Sparse 2D GH-WL-LMS: only (0,1), orders (1,1),(2,1)",
+        params=dict(
+            M=8,
+            scale=0.6,
+            step_size=0.01,
+            step_size_1d=0.01,
+            step_size_2d=0.002,
+            normalized=True,
+            eps=1e-8,
+            include_1d=True,
+            cross_pairs=[(0, 1)],
+            cross_orders=[(1, 1), (2, 1)],
+            leakage_1d=0.0,
+            leakage_2d=0.0,
+            seed=SEED,
+        ),
+    ),
+    dict(
+        Candidate_Name="GH2D_2_cross_stronger",
+        Description="Sparse 2D GH-WL-LMS with stronger 2D learning",
+        params=dict(
+            M=8,
+            scale=0.6,
+            step_size=0.01,
+            step_size_1d=0.01,
+            step_size_2d=0.005,
+            normalized=True,
+            eps=1e-8,
+            include_1d=True,
+            cross_pairs=[(0, 1)],
+            cross_orders=[(1, 1), (2, 1)],
+            leakage_1d=0.0,
+            leakage_2d=0.0,
+            seed=SEED,
+        ),
+    ),
+    dict(
+        Candidate_Name="GH2D_3_richer_orders",
+        Description="Sparse 2D GH-WL-LMS with richer cross orders",
+        params=dict(
+            M=8,
+            scale=0.6,
+            step_size=0.01,
+            step_size_1d=0.01,
+            step_size_2d=0.002,
+            normalized=True,
+            eps=1e-8,
+            include_1d=True,
+            cross_pairs=[(0, 1)],
+            cross_orders=[(1, 1), (2, 1), (1, 2), (2, 2), (3, 1)],
+            leakage_1d=0.0,
+            leakage_2d=0.0,
+            seed=SEED,
+        ),
+    ),
+    dict(
+        Candidate_Name="GH2D_4_leaky_robust",
+        Description="Sparse 2D GH-WL-LMS with small 2D leakage for burst robustness",
+        params=dict(
+            M=8,
+            scale=0.6,
+            step_size=0.01,
+            step_size_1d=0.01,
+            step_size_2d=0.002,
+            normalized=True,
+            eps=1e-8,
+            include_1d=True,
+            cross_pairs=[(0, 1)],
+            cross_orders=[(1, 1), (2, 1)],
+            leakage_1d=0.0,
+            leakage_2d=1e-5,
+            seed=SEED,
+        ),
     ),
 ]
 
@@ -261,6 +340,10 @@ def run_single_candidate(case_name, algorithm_family, candidate_name, descriptio
         algo_params["GHWLLMS"] = copy.deepcopy(params)
         algo_list = ["GH-WL-LMS"]
 
+    elif algorithm_family == "GH2D-WL-LMS":
+        algo_params["GH2DWLLMS"] = copy.deepcopy(params)
+        algo_list = ["GH2D-WL-LMS"]
+
     else:
         raise ValueError(f"Unsupported algorithm_family: {algorithm_family}")
 
@@ -280,12 +363,8 @@ def run_single_candidate(case_name, algorithm_family, candidate_name, descriptio
         IMD,
         algo_params,
         n_trials=MC_TRIALS_DEFAULT,
-
-        # Important:
-        # For candidate generalization testing, do not use expensive snapshots.
         snapshot=False,
         snapshot_every=1,
-
         ss_last_n=SS_LAST_N,
         verbose=False,
         algo_list=algo_list,
@@ -329,16 +408,40 @@ def run_single_candidate(case_name, algorithm_family, candidate_name, descriptio
         WL_sigma=params.get("sigma", np.nan) if algorithm_family == "WL-LMS" else np.nan,
         WL_step_size=params.get("step_size", np.nan) if algorithm_family == "WL-LMS" else np.nan,
 
-        GH_scale=params.get("scale", np.nan) if algorithm_family == "GH-WL-LMS" else np.nan,
-        GH_step_size=params.get("step_size", np.nan) if algorithm_family == "GH-WL-LMS" else np.nan,
-        GH_normalized=params.get("normalized", np.nan) if algorithm_family == "GH-WL-LMS" else np.nan,
+        GH_scale=params.get("scale", np.nan)
+        if algorithm_family in ["GH-WL-LMS", "GH2D-WL-LMS"]
+        else np.nan,
 
-        # In train_online mode, SS_MSE_dB means the tail average of
-        # online training error curve, not snapshot test MSE.
+        GH_step_size=params.get("step_size", np.nan)
+        if algorithm_family in ["GH-WL-LMS", "GH2D-WL-LMS"]
+        else np.nan,
+
+        GH_normalized=params.get("normalized", np.nan)
+        if algorithm_family in ["GH-WL-LMS", "GH2D-WL-LMS"]
+        else np.nan,
+
+        GH2D_step_size_1d=params.get("step_size_1d", np.nan)
+        if algorithm_family == "GH2D-WL-LMS"
+        else np.nan,
+
+        GH2D_step_size_2d=params.get("step_size_2d", np.nan)
+        if algorithm_family == "GH2D-WL-LMS"
+        else np.nan,
+
+        GH2D_cross_pairs=str(params.get("cross_pairs", ""))
+        if algorithm_family == "GH2D-WL-LMS"
+        else "",
+
+        GH2D_cross_orders=str(params.get("cross_orders", ""))
+        if algorithm_family == "GH2D-WL-LMS"
+        else "",
+
+        GH2D_leakage_2d=params.get("leakage_2d", np.nan)
+        if algorithm_family == "GH2D-WL-LMS"
+        else np.nan,
+
         SS_MSE_dB=safe_float(ss_mse.get(alg, np.nan)),
         Online_Train_SS_MSE_dB=safe_float(ss_mse.get(alg, np.nan)),
-
-        # Final test MSE is evaluated once after training and averaged over MC trials.
         Final_Test_MSE_dB=safe_float(final_test_mse_mc_db),
 
         AvgTime_s=safe_float(avg_time.get(alg, np.nan)),
@@ -356,7 +459,6 @@ def run_single_candidate(case_name, algorithm_family, candidate_name, descriptio
     )
 
     return row
-
 
 def make_pivot_rows(long_rows):
     """
@@ -524,6 +626,17 @@ def main():
                 dict(
                     case_name=case_name,
                     algorithm_family="GH-WL-LMS",
+                    candidate_name=cand["Candidate_Name"],
+                    description=cand["Description"],
+                    params=cand["params"],
+                )
+            )
+
+        for cand in GH2D_CANDIDATES:
+            all_jobs.append(
+                dict(
+                    case_name=case_name,
+                    algorithm_family="GH2D-WL-LMS",
                     candidate_name=cand["Candidate_Name"],
                     description=cand["Description"],
                     params=cand["params"],

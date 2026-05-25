@@ -4,13 +4,13 @@ Experiment B configuration: IMD nonlinear echo identification
 import os
 
 DATASET = dict(
-    n_train = 16000,
-    n_test = 8000,
+    n_train = 2000,
+    n_test = 100,
     p = 5,
     seed = 123,
     noise_var = 0.0,
     # input choices: 'colored', 'ar1', 'sines', 'speech'
-    input_type = 'speech',
+    input_type = 'sines',
     # parameters for colored Gaussian (AR(1) on noise): {'rho': 0.9}
     input_params_colored = {'rho': 0.9},
     # parameters for AR(1) signal: {'a': 0.8, 'noise_std': 1.0}
@@ -30,12 +30,27 @@ ALGO_PARAMS = dict(
     KRLS = dict(sigma=1.0, reg=1e-3, forgetting=0.999),
     RFFMC = dict(d=100, step_size=0.5, sigma=1.0, kernel_bw=1.0, seed=0),
     NKRGMC = dict(d=100, sigma=1.0, reg=1e-3, forgetting=0.999, kernel_bw=1.0, alpha_order=2.0, seed=0),
-    WLLMS = dict(M=50, sigma=0.4, step_size=0.006, seed=0),
-    GHWLLMS=dict(M=8, scale=1.0, step_size=0.05, normalized=True, eps=1e-8, seed=0),
+    WLLMS = dict(M=40, sigma=0.4, step_size=0.0005, seed=0),
+    GHWLLMS = dict(M=40, scale=0.6, step_size=0.2, normalized=True, eps=1e-8, seed=0),
+    GH2DWLLMS=dict(
+            M=8,
+            scale=0.6,
+            step_size=0.01,
+            step_size_1d=0.01,
+            step_size_2d=0.002,
+            normalized=True,
+            eps=1e-8,
+            include_1d=True,
+            cross_pairs=[(0, 1)],
+            cross_orders=[(1, 1), (2, 1)],
+            leakage_1d=0.0,
+            leakage_2d=0.0,
+            seed=0,
+        ),
     WLRLS = dict(M=20, sigma=1.0, reg=1e-3, forgetting=0.999, seed=0),
 )
 
-ALGO_LIST = ['LMS', 'WL-LMS']
+ALGO_LIST = ['LMS', 'WL-LMS', 'GH-WL-LMS', 'GH2D-WL-LMS']
 
 # IMD coefficients
 IMD = dict(c2=0.3, c3=0.1)
