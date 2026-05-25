@@ -48,13 +48,71 @@ def plot_learning_curves(
     绘制多算法学习曲线（MSE dB vs iteration）
     results : dict，key 为算法名，value 为 shape (N,) 的 MSE(dB) 数组
     """
-    fig, ax = plt.subplots(figsize=(7, 4.5))
+    import matplotlib.pyplot as _plt
+    import matplotlib.colors as _mcolors
 
-    for name, curve in results.items():
-        style = ALGO_STYLES.get(name, {'color': 'black', 'linestyle': '-', 'label': name})
+    fig, ax = _plt.subplots(figsize=(7, 4.5))
+
+    # Prepare per-algo styles. Use ALGO_STYLES if provided; otherwise assign
+    # distinct colors from a colormap while avoiding reuse of colors already
+    # specified in ALGO_STYLES.
+    names = list(results.keys())
+
+    # collect used colors (as RGBA tuples) from ALGO_STYLES
+    used_rgba = set()
+    for v in ALGO_STYLES.values():
+        try:
+            used_rgba.add(tuple(_mcolors.to_rgba(v.get('color', 'black'))))
+        except Exception:
+            pass
+
+    # colormap to draw new colors from
+    cmap = _plt.get_cmap('tab20')
+    cmap_indices = list(range(cmap.N))
+    cmap_iter = iter(cmap_indices)
+
+    assigned_styles = {}
+    for name in names:
+        base = ALGO_STYLES.get(name)
+        if base is not None:
+            # copy to avoid mutating global dict
+            assigned_styles[name] = dict(base)
+        else:
+            # pick next cmap color that's not already used
+            picked = None
+            for idx in cmap_iter:
+                col = tuple(cmap(idx))
+                if col not in used_rgba:
+                    picked = col
+                    # advance iterator by consuming idx; next for-loop will continue
+                    break
+            if picked is None:
+                # fallback: just cycle through cmap without checking
+                picked = tuple(cmap(0))
+            # convert rgba to hex string for matplotlib convenience
+            hexcol = _mcolors.to_hex(picked)
+            assigned_styles[name] = {'color': hexcol, 'linestyle': '-', 'label': name}
+            used_rgba.add(picked)
+
+    # markers to cycle so overlapping curves remain distinguishable
+    marker_cycle = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'X']
+    for idx, name in enumerate(names):
+        curve = results[name]
+        style = assigned_styles.get(name, {'color': 'black', 'linestyle': '-', 'label': name})
         smoothed = smooth(curve, smooth_window)
-        ax.plot(smoothed, color=style['color'],
-                linestyle=style['linestyle'], label=style['label'])
+        Lc = len(smoothed)
+        # compute marker spacing so markers are not too dense
+        markevery = style.get('markevery')
+        if markevery is None:
+            markevery = max(1, Lc // 12)
+        # choose marker: prefer style's marker if set, else pick from cycle
+        marker = style.get('marker', marker_cycle[idx % len(marker_cycle)])
+        msize = style.get('markersize', 4)
+        # use a slight zorder so later curves are drawn on top
+        z = 2 + idx
+        ax.plot(smoothed, color=style['color'], linestyle=style.get('linestyle', '-'),
+                label=style.get('label', name), marker=marker, markersize=msize,
+                markevery=markevery, markeredgecolor='k', markeredgewidth=0.4, linewidth=1.5, zorder=z)
 
     ax.set_xlabel('Iteration k')
     ax.set_ylabel('MSE (dB)')
@@ -67,7 +125,7 @@ def plot_learning_curves(
     fig.tight_layout()
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, dpi=150)
-    plt.close(fig)
+    _plt.close(fig)
     print(f"[plot] 已保存: {save_path}")
 
 
@@ -624,3 +682,4 @@ def plot_speech_residual_spectra_grid(
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     _plt.close(fig)
     print(f"[plot] saved speech residual spectra grid: {save_path}")
+
