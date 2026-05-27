@@ -23,6 +23,9 @@ ALGO_STYLES = {
     'NKRGMC':   {'color': 'purple',   'linestyle': '--', 'label': 'NKRGMC'},
     'WL-LMS':   {'color': 'red',      'linestyle': '-',  'label': 'WL-LMS'},
     'WL-RLS':   {'color': 'black',    'linestyle': '-',  'label': 'WL-RLS'},
+    # Add explicit styles for display names used by build_algorithms / ALGO_LIST
+    'GH-WL-LMS':  {'color': 'tab:cyan',   'linestyle': '--', 'label': 'GH-WL-LMS'},
+    'GH2D-WL-LMS':{'color': 'magenta',    'linestyle': '-.', 'label': 'GH2D-WL-LMS'},
 }
 
 

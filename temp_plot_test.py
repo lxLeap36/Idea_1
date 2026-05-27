@@ -24,4 +24,3 @@ avg_curves = {
 out = Path('d:/pyProject/Idea_1/results/temp_test_fig.png')
 plot_learning_curves(results=avg_curves, title='Test IMD', save_path=out, smooth_window=10, y_lim=(-60, 10))
 print('wrote', out)
-

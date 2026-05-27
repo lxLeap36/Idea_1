@@ -42,6 +42,10 @@ timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 RESULT_PATH = Path(RESULT_DIR) / EXPERIMENT_CASE / timestamp
 RESULT_PATH.mkdir(parents=True, exist_ok=True)
 
+# Choose curve mode for learning curves. Edit this constant to switch modes.
+# Supported values: 'test_snapshot', 'train_online' (others will be used verbatim)
+CURVE_MODE = 'test_snapshot'
+
 
 def save_curves_csv(curves: dict, path: Path):
     names = list(curves.keys())
@@ -174,7 +178,17 @@ def plot_learning_curves_with_burst(
     }
 
     for name, curve in results.items():
-        style = ALGO_STYLES.get(name, {'color': 'black', 'linestyle': '-', 'label': name})
+        # Try direct style lookup; if not found, try normalized-key match to handle hyphenation differences
+        style = ALGO_STYLES.get(name)
+        if style is None:
+            nk = _norm_key(name).lower()
+            for k in ALGO_STYLES.keys():
+                if _norm_key(k).lower() == nk:
+                    style = dict(ALGO_STYLES[k])
+                    break
+        if style is None:
+            style = {'color': 'black', 'linestyle': '-', 'label': name}
+
         smoothed = smooth(np.asarray(curve), smooth_window)
 
         # build legend label possibly augmented with key params
@@ -222,7 +236,19 @@ def plot_learning_curves_with_burst(
                     if parts:
                         legend_label = f"{legend_label} ({', '.join(parts)})"
 
-        ax.plot(smoothed, color=style['color'], linestyle=style['linestyle'], label=legend_label)
+        # Add markers and markevery so overlapping curves remain distinguishable.
+        Lc = len(smoothed)
+        markevery = style.get('markevery', max(1, Lc // 12) if Lc > 0 else 1)
+        marker = style.get('marker', None)
+        if marker is None:
+            # choose a simple marker based on name hash to be deterministic
+            marker_cycle = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'X']
+            marker = marker_cycle[abs(hash(name)) % len(marker_cycle)]
+        msize = style.get('markersize', 4)
+        z = 2 + list(results.keys()).index(name)
+        ax.plot(smoothed, color=style['color'], linestyle=style.get('linestyle', '-'), label=legend_label,
+                marker=marker, markersize=msize, markevery=markevery, markeredgecolor='k', markeredgewidth=0.4,
+                linewidth=1.5, zorder=z)
 
     if burst_cfg is not None and bool(burst_cfg.get('enabled', False)):
         domain = burst_cfg.get('domain', 'train_iter')
@@ -303,6 +329,9 @@ def main():
     )
     print(f"  IMD coeffs: c2={IMD.get('c2')}, c3={IMD.get('c3')}")
     print(f"  amplitude_burst: {DATASET.get('amplitude_burst', None)}")
+    # Use the configured curve mode (can be changed by editing CURVE_MODE above)
+    curve_mode = CURVE_MODE
+    print(f"  Curve mode: {curve_mode}")
 
     t0 = time.time()
 
@@ -311,30 +340,44 @@ def main():
         IMD,
         ALGO_PARAMS,
         n_trials=MC_TRIALS,
+
+        # Use online training error e(k)^2 as the learning curve.
+        # This avoids expensive snapshot-based test evaluation.
         snapshot=SNAPSHOT,
         snapshot_every=SNAPSHOT_EVERY,
         ss_last_n=SS_LAST_N,
         verbose=True,
         algo_list=ALGO_LIST,
+        curve_mode=curve_mode,
     )
 
     print(f'elapsed: {time.time() - t0:.1f}s')
     print('\n[Done] Experiment C finished successfully.')
 
-    save_curves_csv(avg_curves, RESULT_PATH / 'exp_c_curves.csv')
-    save_summary_csv(ss_mse, avg_time, RESULT_PATH / 'exp_c_summary.csv')
+    # sanitize curve mode for filenames
+    safe_mode = ''.join(c if (c.isalnum() or c in ('-', '_')) else '_' for c in curve_mode)
+
+    save_curves_csv(avg_curves, RESULT_PATH / f'exp_c_{safe_mode}_curves.csv')
+    save_summary_csv(ss_mse, avg_time, RESULT_PATH / f'exp_c_{safe_mode}_summary.csv')
 
     spike_rows = compute_spike_metrics(
         curves=avg_curves,
         burst_cfg=DATASET.get('amplitude_burst', None),
         ss_mse=ss_mse,
     )
-    save_spike_metrics_csv(spike_rows, RESULT_PATH / 'exp_c_spike_metrics.csv')
+    save_spike_metrics_csv(spike_rows, RESULT_PATH / f'exp_c_{safe_mode}_spike_metrics.csv')
+
+    # Friendly title mapping for common modes
+    title_map = {
+        'train_online': 'Online Training MSE',
+        'test_snapshot': 'Test Snapshot MSE',
+    }
+    title_suffix = title_map.get(curve_mode, curve_mode.replace('_', ' ').title())
 
     plot_learning_curves_with_burst(
         results=avg_curves,
-        title=f'Experiment C — {EXPERIMENT_CASE}',
-        save_path=RESULT_PATH / 'fig_exp_c_burst.png',
+        title=f'Experiment C — {EXPERIMENT_CASE} ({title_suffix})',
+        save_path=RESULT_PATH / f'fig_exp_c_burst_{safe_mode}.png',
         smooth_window=PLOT.get('smooth_window', 10),
         y_lim=PLOT.get('y_lim', None),
         burst_cfg=DATASET.get('amplitude_burst', None),

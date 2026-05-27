@@ -16,7 +16,7 @@ import os
 #   'C1_AR1_BURST'
 #   'C2_SINES_BURST'
 #   'C3_SPEECH_BURST'
-EXPERIMENT_CASE = 'C3_SPEECH_BURST'
+EXPERIMENT_CASE = 'C2_SINES_BURST'
 
 
 COMMON_DATASET = dict(
@@ -69,7 +69,6 @@ EXP_C_DATASETS = {
 
         n_train=8000,
         n_test=200,
-
         input_type='sines',
         input_params_colored={'rho': 0.9},
         input_params_ar1={'a': 0.9, 'noise_std': 1.0},
@@ -124,13 +123,13 @@ ALGO_PARAMS = dict(
     KRLS=dict(sigma=1.0, reg=1e-3, forgetting=0.999),
     RFFMC=dict(d=100, step_size=0.5, sigma=1.0, kernel_bw=1.0, seed=0),
     NKRGMC=dict(d=100, sigma=1.0, reg=1e-3, forgetting=0.999, kernel_bw=1.0, alpha_order=2.0, seed=0),
-    WLLMS=dict(M=8, sigma=0.4, step_size=0.006, seed=0),
-    GHWLLMS=dict(M=8, scale=1.0, step_size=0.05, normalized=True, eps=1e-8, seed=0),
+    WLLMS = dict(M=40, sigma=0.4, step_size=0.0005, seed=0),
+    GHWLLMS = dict(M=50, scale=0.6, step_size=0.1, normalized=True, eps=1e-8, seed=0),
     GH2DWLLMS=dict(
-        M=8,
+        M=40,
         scale=0.6,
-        step_size=0.01,
-        step_size_1d=0.01,
+        step_size=0.2,
+        step_size_1d=0.2,
         step_size_2d=0.002,
         normalized=True,
         eps=1e-8,
@@ -138,14 +137,14 @@ ALGO_PARAMS = dict(
         cross_pairs=[(0, 1)],
         cross_orders=[(1, 1), (2, 1)],
         leakage_1d=0.0,
-        leakage_2d=0.0,
+        leakage_2d=1e-5,
         seed=0,
     ),
     WLRLS=dict(M=20, sigma=1.0, reg=1e-3, forgetting=0.999, seed=0),
 )
 
 
-ALGO_LIST = ['LMS', 'WL-LMS', 'GH-WL-LMS', 'GH2D-WL-LMS']
+ALGO_LIST = ['LMS', 'WL-LMS', 'GH-WL-LMS']
 
 
 IMD = dict(c2=0.3, c3=0.1)
@@ -154,7 +153,7 @@ IMD = dict(c2=0.3, c3=0.1)
 MC_TRIALS = 5
 
 
-SNAPSHOT = False
+SNAPSHOT = True
 SNAPSHOT_EVERY = 1
 SS_LAST_N = 1000
 
