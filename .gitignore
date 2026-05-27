@@ -1,3 +1,7 @@
 /results/
 /Data/
 /Dataset/
+__pycache__/
+*.pyc
+.idea/workspace.xml
+.idea/copilot*.xml
