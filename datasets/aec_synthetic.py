@@ -101,12 +101,25 @@ def find_audio_by_fileid(folder: Path, fileid: int, prefix: str = "") -> Path:
     """
     根据 fileid 在指定文件夹中查找 wav 文件。
 
-    AEC Challenge 合成数据的文件命名可能存在不同版本。
-    这里做多种候选匹配，增强兼容性。
+    注意：
+        这里必须严格匹配 fileid，不能用 *199.wav 这种宽松匹配，
+        否则 fileid=199 会误匹配到 fileid=1199。
+
+    合法匹配示例：
+        farend_speech_fileid_199.wav
+        echo_fileid_199.wav
+        fileid_199.wav
+        clean_fileid_199.wav
     """
+    import re
+
     folder = Path(folder)
     fileid = int(fileid)
 
+    if not folder.exists():
+        raise FileNotFoundError(f"文件夹不存在：{folder}")
+
+    # 先尝试常见精确文件名。
     candidates = []
 
     if prefix:
@@ -117,29 +130,95 @@ def find_audio_by_fileid(folder: Path, fileid: int, prefix: str = "") -> Path:
 
     candidates.extend([
         folder / f"fileid_{fileid}.wav",
-        folder / f"{fileid}.wav",
         folder / f"clean_fileid_{fileid}.wav",
+        folder / f"{fileid}.wav",
     ])
 
     for p in candidates:
         if p.exists():
             return p
 
-    patterns = [
-        f"*fileid_{fileid}.wav",
-        f"*_{fileid}.wav",
-        f"*{fileid}.wav",
-    ]
+    # 再对文件夹内 wav 做严格正则匹配。
+    # 只允许文件名里出现完整的 fileid_<数字>，并且数字必须等于目标 fileid。
+    pattern = re.compile(r"fileid_(\d+)\.wav$", re.IGNORECASE)
 
-    for pat in patterns:
-        hits = sorted(folder.glob(pat))
-        if len(hits) > 0:
-            return hits[0]
+    hits = []
+    for p in folder.glob("*.wav"):
+        m = pattern.search(p.name)
+        if m is None:
+            continue
+
+        fid = int(m.group(1))
+        if fid == fileid:
+            hits.append(p)
+
+    hits = sorted(hits)
+
+    if len(hits) == 1:
+        return hits[0]
+
+    if len(hits) > 1:
+        raise RuntimeError(
+            f"fileid={fileid} 在 {folder} 中匹配到多个文件：{hits}"
+        )
 
     raise FileNotFoundError(
-        f"无法在 {folder} 中根据 fileid={fileid} 找到音频文件"
+        f"无法在 {folder} 中严格匹配 fileid={fileid} 的 wav 文件"
     )
 
+def collect_available_fileids(folder: Path) -> set:
+    """
+    扫描指定音频文件夹，收集实际存在的 fileid。
+
+    例如：
+        farend_speech_fileid_1199.wav -> 1199
+        echo_fileid_1199.wav          -> 1199
+    """
+    import re
+
+    folder = Path(folder)
+
+    if not folder.exists():
+        raise FileNotFoundError(f"文件夹不存在：{folder}")
+
+    pattern = re.compile(r"fileid_(\d+)\.wav$", re.IGNORECASE)
+
+    ids = set()
+
+    for p in folder.glob("*.wav"):
+        m = pattern.search(p.name)
+        if m is not None:
+            ids.add(int(m.group(1)))
+
+    return ids
+
+def filter_meta_by_available_audio(
+    df: pd.DataFrame,
+    farend_dir: Path,
+    echo_dir: Path,
+) -> pd.DataFrame:
+    """
+    只保留 farend_speech 和 echo_signal 文件夹中都实际存在的 fileid。
+
+    这样可以避免：
+        meta 中 fileid=199
+        但本地只下载了 fileid=1199
+        然后错误匹配或报错。
+    """
+    farend_ids = collect_available_fileids(farend_dir)
+    echo_ids = collect_available_fileids(echo_dir)
+
+    common_ids = farend_ids.intersection(echo_ids)
+
+    out = df[df["fileid"].astype(int).isin(common_ids)].copy()
+    out = out.reset_index(drop=True)
+
+    print(f"[available] farend_speech 文件数：{len(farend_ids)}")
+    print(f"[available] echo_signal 文件数：{len(echo_ids)}")
+    print(f"[available] farend 和 echo 共同 fileid 数：{len(common_ids)}")
+    print(f"[available] meta 过滤后可用样本数：{len(out)}")
+
+    return out
 
 def load_meta(meta_csv: Path) -> pd.DataFrame:
     """读取 meta.csv。"""

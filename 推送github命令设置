@@ -1,0 +1,5 @@
+cd D:\PythonProject\Idea_1
+git remote set-url origin ssh://git@ssh.github.com:443/lxLeap36/Idea_1.git
+git push
+
+不过似乎要先在github上设置一下ssh key

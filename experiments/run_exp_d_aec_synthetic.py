@@ -72,6 +72,7 @@ from configs.exp_d_config import (
 from datasets.aec_synthetic import (
     load_meta,
     filter_meta_for_exp_d,
+    filter_meta_by_available_audio,
     load_exp_d_pair,
     build_input_vector_stream,
 )
@@ -379,6 +380,11 @@ def main():
         require_farend_noisy=REQUIRE_FAREND_NOISY,
         require_nearend_noisy=REQUIRE_NEAREND_NOISY,
         split=SPLIT,
+    )
+    df_sel = filter_meta_by_available_audio(
+        df_sel,
+        farend_dir=FAREND_DIR,
+        echo_dir=ECHO_DIR,
     )
 
     print(f"[meta] 原始样本数：{len(df)}")

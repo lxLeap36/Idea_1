@@ -63,7 +63,7 @@ SPLIT = None
 TARGET_FS = 16000
 
 # 每条 trial 使用 10 秒。
-SEGMENT_SECONDS = 10.0
+SEGMENT_SECONDS = 9.0
 
 # 每条音频内部如何裁剪片段：
 #   "active"：选择远端语音能量较高的连续片段
@@ -114,7 +114,6 @@ SS_LAST_RATIO = 0.1
 ALGO_LIST = [
     "LMS",
     "WL-LMS",
-    "GH-WL-LMS",
     "GH-WL-LMS-Fast",
 ]
 
