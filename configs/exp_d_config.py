@@ -63,7 +63,7 @@ SPLIT = None
 TARGET_FS = 16000
 
 # 每条 trial 使用 10 秒。
-SEGMENT_SECONDS = 3.0
+SEGMENT_SECONDS = 10.0
 
 # 每条音频内部如何裁剪片段：
 #   "active"：选择远端语音能量较高的连续片段
@@ -90,7 +90,7 @@ PEAK_EPS = 1e-12
 
 # 第一版先跑 256 taps。
 # 后续正式实验可以改成 [256, 512]。
-FILTER_ORDERS = [256]
+FILTER_ORDERS = [1024]
 
 # 蒙特卡洛 trial 数。
 # 调试时可以先设 3 或 5，正式实验建议 20 或 30。
@@ -101,7 +101,7 @@ SEED = 0
 
 # 学习曲线统计窗口长度，单位为样本点。
 # 16 kHz 下 1024 点约 64 ms。
-CURVE_WINDOW = 1
+CURVE_WINDOW = 512
 
 # 稳态指标取最后多少比例的窗口。
 SS_LAST_RATIO = 0.1
@@ -115,6 +115,7 @@ ALGO_LIST = [
     "LMS",
     "WL-LMS",
     "GH-WL-LMS",
+    "GH-WL-LMS-Fast",
 ]
 
 
@@ -137,6 +138,15 @@ ALGO_PARAMS = dict(
     ),
 
     GHWLLMS=dict(
+        M=20,
+        scale=0.6,
+        step_size=0.02,
+        normalized=True,
+        eps=1e-8,
+        seed=0,
+    ),
+
+    GHWLLMSFast=dict(
         M=20,
         scale=0.6,
         step_size=0.02,

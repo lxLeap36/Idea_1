@@ -76,7 +76,7 @@ from datasets.aec_synthetic import (
     build_input_vector_stream,
 )
 
-from algorithms import LMS, WLLMS, GHWLLMS
+from algorithms import LMS, WLLMS, GHWLLMS, GHWLLMSFast
 
 
 # ============================================================
@@ -171,6 +171,9 @@ def build_algorithm(name: str, filter_order: int, params: dict):
 
     if name == "GH-WL-LMS":
         return GHWLLMS(filter_order, **params["GHWLLMS"])
+
+    if name == "GH-WL-LMS-Fast":
+        return GHWLLMSFast(filter_order, **params["GHWLLMSFast"])
 
     raise ValueError(f"未知算法：{name}")
 
