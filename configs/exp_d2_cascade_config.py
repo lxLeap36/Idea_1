@@ -72,8 +72,8 @@ PEAK_EPS = 1e-12
 
 # 第一版采用标准无重叠帧。
 # 因此 FRAME_LENGTH = HOP_LENGTH。
-FRAME_LENGTH = 1024
-HOP_LENGTH = 1024
+FRAME_LENGTH = 2048
+HOP_LENGTH = 2048
 
 # 实时预算 = FRAME_LENGTH / TARGET_FS。
 # 16 kHz 下 256 点对应 16 ms。
@@ -121,7 +121,7 @@ LMS_PARAMS = dict(
 FDAF_PARAMS = dict(
     filter_length=FRAME_LENGTH,
     block_size=FRAME_LENGTH,
-    step_size=0.1,
+    step_size=0.5,
     eps=1e-6,
     leakage=0.0,
 )
@@ -131,19 +131,19 @@ FDAF_PARAMS = dict(
 # 非线性残差分支参数
 # ============================================================
 
-NONLINEAR_FILTER_ORDER = 16
+NONLINEAR_FILTER_ORDER = 5
 
 WLLMS_PARAMS = dict(
-    M=20,
+    M=40,
     sigma=0.4,
-    step_size=0.006,
+    step_size=0.0005,
     seed=0,
 )
 
 GHWLLMSFAST_PARAMS = dict(
-    M=20,
+    M=40,
     scale=0.6,
-    step_size=0.2,
+    step_size=0.1,
     normalized=True,
     eps=1e-8,
     seed=0,
