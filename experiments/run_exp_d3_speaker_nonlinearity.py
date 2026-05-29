@@ -16,6 +16,9 @@
     这里不是完整 AEC 实验。
     这里的任务是：
         x(n) -> f_nonlinear(x(n))
+
+单讲场景下，PESQ/STOI 可以作为辅助的建模相似度指标，但它不代表 AEC 消除质量，
+    因为这里没有近端语音，用的是 y_hat 与 y=f_nonlinear(x(n)) 的比较。
 """
 
 import sys
@@ -47,6 +50,7 @@ if str(ROOT) not in sys.path:
 # ============================================================
 # 导入配置
 # ============================================================
+from metrics import compute_pesq_stoi
 
 from configs.exp_d3_config import (
     META_CSV,
@@ -510,19 +514,19 @@ def run_one_algorithm_online(
     d: np.ndarray,
     filter_order: int,
     curve_window: int,
+    return_output: bool = True,
 ):
     """
     对单个算法进行在线训练。
 
-    这里统计两个窗口级指标：
+    统计：
+        1. Residual MSE
+        2. Modeling Gain / ERLE
+        3. 可选返回模型输出 y_hat，用于计算 PESQ / STOI
 
-    1. Residual MSE:
-        10log10(mean(e^2))
-
-    2. Modeling Gain / ERLE:
-        10log10(mean(d^2) / mean(e^2))
-
-    对 D3 来说，第二个指标可理解为“非线性目标建模增益”。
+    注意：
+        对 D3 来说，d 是模拟非线性目标；
+        y_hat 是算法对该非线性目标的估计。
     """
     x = np.asarray(x, dtype=np.float64)
     d = np.asarray(d, dtype=np.float64)
@@ -534,6 +538,11 @@ def run_one_algorithm_online(
     mse_curve = []
     erle_curve = []
 
+    if return_output:
+        y_hat = np.zeros(n, dtype=np.float64)
+    else:
+        y_hat = None
+
     e2_sum = 0.0
     d2_sum = 0.0
     count = 0
@@ -541,7 +550,19 @@ def run_one_algorithm_online(
     t0 = time.perf_counter()
 
     for k, x_vec in enumerate(build_input_vector_stream(x, filter_order)):
-        e = algo.update(x_vec, float(d[k]))
+        # 先预测，再更新。
+        # 这样 y_hat[k] 表示更新前模型对当前样本的在线输出。
+        if hasattr(algo, "predict"):
+            y = float(algo.predict(x_vec))
+            e = float(d[k] - y)
+            algo.update(x_vec, float(d[k]))
+        else:
+            # 如果某些算法没有 predict 接口，则退化为使用 update 返回的误差。
+            e = float(algo.update(x_vec, float(d[k])))
+            y = float(d[k] - e)
+
+        if return_output:
+            y_hat[k] = y
 
         e2_sum += float(e * e)
         d2_sum += float(d[k] * d[k])
@@ -581,6 +602,7 @@ def run_one_algorithm_online(
         final_mse_db=final_mse_db,
         final_erle_db=final_erle_db,
         time_s=float(elapsed),
+        y_hat=y_hat,
     )
 
 
@@ -715,6 +737,8 @@ def main():
         final_mse_by_algo = {name: [] for name in ALGO_LIST}
         final_erle_by_algo = {name: [] for name in ALGO_LIST}
         time_by_algo = {name: [] for name in ALGO_LIST}
+        pesq_by_algo = {name: [] for name in ALGO_LIST}
+        stoi_by_algo = {name: [] for name in ALGO_LIST}
 
         for trial_id, row in trials.iterrows():
             fileid = int(row["fileid"])
@@ -758,11 +782,22 @@ def main():
                     curve_window=CURVE_WINDOW,
                 )
 
+                perceptual_scores = compute_pesq_stoi(
+                    ref=d,
+                    deg=result["y_hat"],
+                    fs=item["fs"],
+                    pesq_mode="wb",
+                    extended_stoi=False,
+                    normalize=True,
+                    on_error="nan",
+                )
                 curves_mse_by_algo[algo_name].append(result["mse_curve"])
                 curves_erle_by_algo[algo_name].append(result["erle_curve"])
                 final_mse_by_algo[algo_name].append(result["final_mse_db"])
                 final_erle_by_algo[algo_name].append(result["final_erle_db"])
                 time_by_algo[algo_name].append(result["time_s"])
+                pesq_by_algo[algo_name].append(perceptual_scores["PESQ"])
+                stoi_by_algo[algo_name].append(perceptual_scores["STOI"])
 
                 trial_row = dict(
                     Experiment="D3",
@@ -780,13 +815,17 @@ def main():
                     Segment_Start_Sample=int(item["segment_start_sample"]),
                     Segment_Samples=int(item["segment_samples"]),
                     Farend_Path=item["farend_path"],
+                    PESQ=float(perceptual_scores["PESQ"]),
+                    STOI=float(perceptual_scores["STOI"]),
                 )
                 trial_rows_all.append(trial_row)
 
                 print(
-                    f"  {algo_name:12s} | "
+                    f"  {algo_name:14s} | "
                     f"MSE={result['final_mse_db']:.3f} dB | "
-                    f"ModelingGain={result['final_erle_db']:.3f} dB | "
+                    f"Gain={result['final_erle_db']:.3f} dB | "
+                    f"PESQ={perceptual_scores['PESQ']:.3f} | "
+                    f"STOI={perceptual_scores['STOI']:.3f} | "
                     f"time={result['time_s']:.3f}s"
                 )
 
@@ -811,6 +850,8 @@ def main():
             mse_vals = np.asarray(final_mse_by_algo[algo_name], dtype=float)
             erle_vals = np.asarray(final_erle_by_algo[algo_name], dtype=float)
             time_vals = np.asarray(time_by_algo[algo_name], dtype=float)
+            pesq_vals = np.asarray(pesq_by_algo[algo_name], dtype=float)
+            stoi_vals = np.asarray(stoi_by_algo[algo_name], dtype=float)
 
             summary_rows_all.append(dict(
                 Experiment="D3",
@@ -828,6 +869,12 @@ def main():
                 Std_Final_ERLE_dB=float(np.nanstd(erle_vals)) if len(erle_vals) else np.nan,
                 Median_Final_ERLE_dB=float(np.nanmedian(erle_vals)) if len(erle_vals) else np.nan,
                 Mean_Time_s=float(np.nanmean(time_vals)) if len(time_vals) else np.nan,
+                Mean_PESQ=float(np.nanmean(pesq_vals)) if len(pesq_vals) else np.nan,
+                Std_PESQ=float(np.nanstd(pesq_vals)) if len(pesq_vals) else np.nan,
+                Median_PESQ=float(np.nanmedian(pesq_vals)) if len(pesq_vals) else np.nan,
+                Mean_STOI=float(np.nanmean(stoi_vals)) if len(stoi_vals) else np.nan,
+                Std_STOI=float(np.nanstd(stoi_vals)) if len(stoi_vals) else np.nan,
+                Median_STOI=float(np.nanmedian(stoi_vals)) if len(stoi_vals) else np.nan,
             ))
 
         curves_to_save = {}

@@ -1,6 +1,6 @@
 /results/
 /Data/
-/Dataset/
+/Data/
 __pycache__/
 *.pyc
 .idea/workspace.xml
